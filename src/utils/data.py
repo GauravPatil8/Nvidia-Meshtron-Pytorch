@@ -1,6 +1,10 @@
+import os
 import trimesh
 import numpy as np
 
+def save_obj(mesh: trimesh.Trimesh, dir_path: str, index: int):
+    os.makedirs(dir_path, exist_ok=True)
+    mesh.export(os.path.join(dir_path, f"{index}.obj"))
 
 def apply_rotation(mesh: trimesh.Trimesh, max_angle_degree: int = 180) -> trimesh.Trimesh:
     "Applies Random Euler rotation to the mesh"
