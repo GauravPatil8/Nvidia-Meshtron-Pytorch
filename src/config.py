@@ -10,6 +10,5 @@ class ConfigurationManager:
         return IngestionConfig(
             root = get_path(PROJECT_ROOT, 'artifacts'),
             dataset = get_path(PROJECT_ROOT, 'artifacts', 'dataset'),
-            meshes = get_path(PROJECT_ROOT, 'mesh'),
-            len_dataset = 50000,
+            meshes = get_path(PROJECT_ROOT, 'mesh')
         )

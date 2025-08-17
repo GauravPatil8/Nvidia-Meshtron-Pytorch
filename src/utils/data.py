@@ -2,11 +2,15 @@ import os
 import trimesh
 import numpy as np
 
+def load_obj(mesh_path: str) -> trimesh.Trimesh:
+    mesh = trimesh.load_mesh(mesh_path, file_type = 'obj')
+    return mesh
+
 def save_obj(mesh: trimesh.Trimesh, dir_path: str, index: int):
     os.makedirs(dir_path, exist_ok=True)
     mesh.export(os.path.join(dir_path, f"{index}.obj"))
 
-def apply_rotation(mesh: trimesh.Trimesh, max_angle_degree: int = 180) -> trimesh.Trimesh:
+def apply_random_rotation(mesh: trimesh.Trimesh, max_angle_degree: int = 180) -> None:
     "Applies Random Euler rotation to the mesh"
 
     euler_x = np.random.uniform(-max_angle_degree, max_angle_degree)
@@ -17,9 +21,7 @@ def apply_rotation(mesh: trimesh.Trimesh, max_angle_degree: int = 180) -> trimes
     mesh.apply_transform(trimesh.transformations.rotation_matrix(euler_y, [0,1,0]))
     mesh.apply_transform(trimesh.transformations.rotation_matrix(euler_z, [0,0,1]))
 
-    return mesh
-
-def apply_scale(mesh: trimesh.Trimesh, scale_ranges: dict = None) -> trimesh.Trimesh:
+def apply_random_scale(mesh: trimesh.Trimesh, scale_ranges: dict = None) -> None:
     """
         Applies random scaling on each axis
 
@@ -42,13 +44,8 @@ def apply_scale(mesh: trimesh.Trimesh, scale_ranges: dict = None) -> trimesh.Tri
 
     mesh.apply_scale([scale_x, scale_y, scale_z])
 
-    return mesh
-
-def rotateandscale(mesh: trimesh.Trimesh, max_angle_degree: int = 180, scale_ranges: dict = None):
+def apply_random_transformations(mesh: trimesh.Trimesh, max_angle_degree: int = 180, scale_ranges: dict = None) -> None:
     "Applies random rotation and scaling for each axis"
 
-    copy_mesh = mesh.copy()
-    copy_mesh = apply_rotation(copy_mesh, max_angle_degree)
-    copy_mesh = apply_scale(copy_mesh, scale_ranges)
-
-    return copy_mesh
+    apply_random_rotation(mesh, max_angle_degree)
+    apply_random_scale(mesh, scale_ranges)
