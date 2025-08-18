@@ -1,4 +1,5 @@
 import os
+from tqdm import tqdm
 from utils.common import get_path
 from utils.data import apply_random_transformations, save_obj, load_obj
 
@@ -25,11 +26,12 @@ class Ingestion:
 
         instances_per_mesh = self.len_dataset // len(self.meshes)
 
-        for mesh_path in self.meshes:
-            dir_path = get_path(self.dataset, os.path.splitext(os.path.basename(mesh_path))[0])
+        for mesh_path in tqdm(self.meshes, desc='Meshes'):
+            dir_name = os.path.splitext(os.path.basename(mesh_path))[0]
+            dir_path = get_path(self.dataset, dir_name)
             mesh = load_obj(mesh_path).copy()
 
-            for index in range(instances_per_mesh):
+            for index in tqdm(range(instances_per_mesh), desc=f"Instances for {dir_name}", leave=False):
                 apply_random_transformations(mesh)
                 save_obj(mesh, dir_path, index+1) #obj staring from index 1 [cube\1.obj, cube\2.obj]
                 
