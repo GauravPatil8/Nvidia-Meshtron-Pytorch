@@ -49,3 +49,31 @@ def apply_random_transformations(mesh: trimesh.Trimesh, max_angle_degree: int = 
 
     apply_random_rotation(mesh, max_angle_degree)
     apply_random_scale(mesh, scale_ranges)
+
+def normalize_mesh_to_bbox(mesh: trimesh.Trimesh, box_size_dim: float = 1.0):
+    """
+    Normalize a mesh so that it fits inside a cube bounding box of size `box_size_dim`.
+
+    Parameters:
+        mesh (trimesh.Trimesh): Input mesh
+        box_size_dim (float): Target cube side length
+    """
+    vertices = mesh.vertices
+
+    # current bounding box
+    min_coord = np.min(vertices, axis=0)
+    max_coord = np.max(vertices, axis=0)
+    current_size = max_coord - min_coord
+
+    # avoid divide by zero
+    current_size[current_size == 0] = 1e-9  
+
+    # uniform scaling factor
+    scale_factor = (box_size_dim / np.max(current_size))
+
+    # scale around the center of bbox
+    center = (min_coord + max_coord) / 2.0
+    normalized_vertices = (vertices - center) * scale_factor
+
+    mesh.vertices = normalized_vertices
+    return mesh
