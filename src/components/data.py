@@ -11,12 +11,14 @@ from src.utils.data import load_obj, normalize_mesh_to_bbox, map_to_bins
 
 
 class MeshDataset(Dataset):
-    def __init__(self, dataset_dir: str, num_points: int = 2048, num_of_bins: int = 1024):
+    def __init__(self, dataset_dir: str, num_points: int = 2048, num_of_bins: int = 1024, bounding_box_dim: float = 1.0):
         """
-            Returns normalized and scaled to bounding box mesh
+            Dataset class to handle mesh dataset.
             Parameters:
                 dataset_dir = location of stored data.
                 num_points = number of points to sample on the mesh
+                num_of_bins = number of bins to map the values
+                bounding_box_dim = length of ont side of box
         """
         if os.path.exists(dataset_dir):
             self.data_dir = dataset_dir
@@ -24,7 +26,8 @@ class MeshDataset(Dataset):
             raise FileNotFoundError(f"Dataset directory not found: {dataset_dir}")
         self.num_points = num_points
         self.num_of_bins = num_of_bins
-        self.files = [get_path(root, file) for root, dirs, files in os.walk(dataset_dir) for file in files]
+        self.bounding_box_dim = bounding_box_dim
+        self.files = [get_path(root, file) for root, _ , files in os.walk(dataset_dir) for file in files]
         
     def __len__(self):
         return len(self.files)
@@ -34,7 +37,7 @@ class MeshDataset(Dataset):
         mesh = load_obj(self.files[index])
 
         # normalize and centralize the mesh
-        bounded_mesh = normalize_mesh_to_bbox(mesh, 1.0)
+        bounded_mesh = normalize_mesh_to_bbox(mesh, self.bounding_box_dim)
 
         #sampling points on the surface of the bounded mesh
         point_cloud = bounded_mesh.sample(self.num_points)
@@ -47,10 +50,10 @@ class MeshDataset(Dataset):
         point_cloud = point_cloud[sorted_idx]
 
         #mapping to 1024 bins
-        point_cloud = map_to_bins(point_cloud, self.num_of_bins)
+        point_cloud = map_to_bins(point_cloud, self.num_of_bins, self.bounding_box_dim)
 
         # return tuple(tensor of points (x, y, z), path of the original model)
-        return (torch.from_numpy(point_cloud).to(dtype = torch.int), self.files[index])
+        return (torch.from_numpy(point_cloud).to(dtype=torch.int32), self.files[index])
     
 
 if __name__ == '__main__':
