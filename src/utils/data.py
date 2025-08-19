@@ -77,3 +77,7 @@ def normalize_mesh_to_bbox(mesh: trimesh.Trimesh, box_size_dim: float = 1.0):
 
     mesh.vertices = normalized_vertices
     return mesh
+
+def map_to_bins(points: np.array, bins: int):
+    "converts float values to discrete int32 bins"
+    return np.clip(np.floor((points + 0.5) * bins).astype(int), 0, 1023)
