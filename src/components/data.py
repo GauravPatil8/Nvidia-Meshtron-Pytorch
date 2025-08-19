@@ -4,6 +4,7 @@ import sys
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
 import torch
+import numpy as np
 from src.utils.common import get_path
 from torch.utils.data import Dataset, DataLoader
 from src.utils.data import load_obj, normalize_mesh_to_bbox
@@ -33,6 +34,13 @@ class MeshDataset(Dataset):
 
         #sampling points on the surface of the bounded mesh
         point_cloud = bounded_mesh.sample(self.num_points)
+
+        #Rearrange xyz to yzx as mentioned in the paper
+        point_cloud = point_cloud[:, [1,2,0]]
+
+        #lexsort
+        sorted_idx = np.lexsort(point_cloud[:, 2], point_cloud[:, 1], point_cloud[:,0])
+        point_cloud = point_cloud[sorted_idx]
 
         # return tuple(tensor of points (x, y, z), path of the original model)
         return (torch.from_numpy(point_cloud), self.files[index])
