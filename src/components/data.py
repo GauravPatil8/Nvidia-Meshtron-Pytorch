@@ -39,9 +39,9 @@ class PrimitiveDataset(Dataset):
         self.bounding_box_dim = bounding_box_dim
         self.files = [get_path(root, file) for root, _ , files in os.walk(dataset_dir) for file in files]
         self.tokenizer = VertexTokenizer(num_of_bins, bounding_box_dim)
-        self.EOS = self.EOS
-        self.SOS = self.SOS
-        self.PAD = self.PAD
+        self.EOS = self.tokenizer.EOS
+        self.SOS = self.tokenizer.SOS
+        self.PAD = self.tokenizer.PAD
         
     def __len__(self):
         return len(self.files)
