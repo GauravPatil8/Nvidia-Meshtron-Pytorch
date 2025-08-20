@@ -6,12 +6,21 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".
 import torch
 import numpy as np
 from src.utils.common import get_path
-from torch.utils.data import Dataset, DataLoader
-from src.utils.data import load_obj, normalize_mesh_to_bbox, map_to_bins
+from torch.utils.data import Dataset
+from src.components.VertexTokenizer import VertexTokenizer
+from src.utils.data import load_obj, normalize_mesh_to_bbox
+from dataclasses import dataclass
 
+@dataclass
+class MeshData:
+    encoder_input: torch.tensor
+    decoder_input: torch.tensor
+    encoder_mask: torch.tensor
+    decoder_mask: torch.tensor
+    target: torch.tensor
 
-class MeshDataset(Dataset):
-    def __init__(self, dataset_dir: str, num_points: int = 2048, num_of_bins: int = 1024, bounding_box_dim: float = 1.0):
+class PrimitiveDataset(Dataset):
+    def __init__(self, dataset_dir: str, seq_len: int, num_points: int = 2048, num_of_bins: int = 1024, bounding_box_dim: float = 1.0):
         """
             Dataset class to handle mesh dataset.
             Parameters:
@@ -24,10 +33,15 @@ class MeshDataset(Dataset):
             self.data_dir = dataset_dir
         else:
             raise FileNotFoundError(f"Dataset directory not found: {dataset_dir}")
+        self.seq_len = seq_len
         self.num_points = num_points
         self.num_of_bins = num_of_bins
         self.bounding_box_dim = bounding_box_dim
         self.files = [get_path(root, file) for root, _ , files in os.walk(dataset_dir) for file in files]
+        self.tokenizer = VertexTokenizer(num_of_bins, bounding_box_dim)
+        self.EOS = self.EOS
+        self.SOS = self.SOS
+        self.PAD = self.PAD
         
     def __len__(self):
         return len(self.files)
@@ -39,44 +53,75 @@ class MeshDataset(Dataset):
         # normalize and centralize the mesh
         bounded_mesh = normalize_mesh_to_bbox(mesh, self.bounding_box_dim)
 
-        #sampling points on the surface of the bounded mesh
+        #sampling points on the surface of the bounded mesh (N, 3)
         point_cloud = bounded_mesh.sample(self.num_points)
 
-        #Rearrange xyz to yzx as mentioned in the paper
-        point_cloud = point_cloud[:, [1,2,0]]
+        #decoder input
+        dec_input = self.tokenizer.encode(np.unique(bounded_mesh.vertices, axis=0))
 
-        #lexsort y->z->x
-        sorted_idx = np.lexsort([point_cloud[:, 2], point_cloud[:, 1], point_cloud[:,0]])
-        point_cloud = point_cloud[sorted_idx]
+        #encoder input
+        enc_input = self.tokenizer.encode(point_cloud)
+        
+        #add special tokens
+        num_enc_tokens = self.seq_len - len(enc_input) - 2
+        num_dec_tokens = self.seq_len - len(dec_input) - 1
 
-        #mapping to 1024 bins
-        point_cloud = map_to_bins(point_cloud, self.num_of_bins, self.bounding_box_dim)
+        if num_dec_tokens < 0 or num_enc_tokens < 0:
+            raise ValueError("Sentence is too long")
+        
+        encoder_input = torch.cat(
+            [
+            self.SOS,
+            enc_input,
+            self.EOS,
+            torch.tensor([self.PAD] * num_enc_tokens, dtype=torch.int64)
+            ],
+            dim=0
+        )
+        
+        decoder_input = torch.cat(
+            [
+                self.SOS,
+                dec_input,
+                torch.tensor([self.PAD] * num_dec_tokens, dtype=torch.int64)
+            ],
+            dim=0
+        )
 
-        # return tuple(tensor of points (x, y, z), path of the original model)
-        return (torch.from_numpy(point_cloud).to(dtype=torch.int32), self.files[index])
+        target = torch.cat(
+            [
+                dec_input,
+                self.EOS,
+                torch.tensor([self.PAD] * num_dec_tokens, dtype=torch.int64)
+            ],
+            dim=0
+        )
+        return MeshData(
+            encoder_input=encoder_input,
+            decoder_input=decoder_input,
+            encoder_mask=(encoder_input != self.PAD).unsqueeze(0).unsqueeze(0).int(), # (1, 1, seq_len)
+            decoder_mask=(decoder_input != self.PAD).unsqueeze(0).int() & causal_mask(decoder_input.size(0)), # (1, seq_len) & (1, seq_len, seq_len),,
+            target=target
+        )
+
+def causal_mask(size):
+    mask = torch.triu(torch.ones((1, size, size)), diagonal=1).type(torch.int)
+    return mask == 0
     
 
 if __name__ == '__main__':
     
-    dataset = MeshDataset(R"C:\Padhai\implementation_research_papers\meshtron\artifacts\dataset", num_points=2048)
+    dataset = PrimitiveDataset(R"C:\Padhai\implementation_research_papers\meshtron\artifacts\dataset", num_points=2048, seq_len=
+                               6200)
 
     # Test __len__
     print("Dataset size:", len(dataset))
 
     # Test one item
-    points, path = dataset[32]
-    print("First mesh points shape:", points.shape)
-    print("File path:", path)
+    data = dataset[12]
 
-    # Check range of points
-    print("Min:", points.min(axis=0))
-    print("Max:", points.max(axis=0))
-
-    # Wrap in dataloader
-    # loader = DataLoader(dataset, batch_size=4, shuffle=True)
-
-    # for batch in loader:
-    #     x, paths = batch
-    #     print("Batch points:", x.shape)
-    #     print("Paths:", paths)
-    #     break
+    print("encoder_input: ",data.encoder_input)
+    print("decoder_input: ",data.decoder_input)
+    # Check shape of points
+    print("encoder_input_shape: ",data.encoder_input.shape)
+    print("Decoder_input_shape: ", data.decoder_input.shape)
