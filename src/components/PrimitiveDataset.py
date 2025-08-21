@@ -13,14 +13,14 @@ from dataclasses import dataclass
 
 @dataclass
 class MeshData:
-    encoder_input: torch.tensor
-    decoder_input: torch.tensor
-    encoder_mask: torch.tensor
-    decoder_mask: torch.tensor
-    target: torch.tensor
+    encoder_input: torch.Tensor
+    decoder_input: torch.Tensor
+    encoder_mask: torch.Tensor
+    decoder_mask: torch.Tensor
+    target: torch.Tensor
 
 class PrimitiveDataset(Dataset):
-    def __init__(self, dataset_dir: str, seq_len: int, num_points: int = 2048, num_of_bins: int = 1024, bounding_box_dim: float = 1.0):
+    def __init__(self, dataset_dir: str, seq_len: int, tokenizer: VertexTokenizer, num_points: int = 2048, num_of_bins: int = 1024, bounding_box_dim: float = 1.0):
         """
             Dataset class to handle mesh dataset.
             Parameters:
@@ -38,7 +38,7 @@ class PrimitiveDataset(Dataset):
         self.num_of_bins = num_of_bins
         self.bounding_box_dim = bounding_box_dim
         self.files = [get_path(root, file) for root, _ , files in os.walk(dataset_dir) for file in files]
-        self.tokenizer = VertexTokenizer(num_of_bins, bounding_box_dim)
+        self.tokenizer = tokenizer
         self.EOS = self.tokenizer.EOS
         self.SOS = self.tokenizer.SOS
         self.PAD = self.tokenizer.PAD
@@ -105,8 +105,8 @@ class PrimitiveDataset(Dataset):
         )
 
 def causal_mask(size):
-    mask = torch.triu(torch.ones((1, size, size)), diagonal=1).type(torch.int)
-    return mask == 0
+    mask = torch.tril(torch.ones((1, size, size))).type(torch.int)
+    return mask == 1
     
 
 if __name__ == '__main__':
