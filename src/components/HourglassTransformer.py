@@ -3,6 +3,45 @@ import math
 import torch.nn as nn
 import torch.nn.functional as F
 
+class UpSample(nn.Module):
+    def __init__(self, shorten_factor: int, dim: int, dropout:float):
+        super().__init__()
+        self.sf = shorten_factor
+        self.dim = dim
+
+        self.linear = nn.Linear(dim, shorten_factor * dim)
+        self.dropout = nn.Dropout(dropout)
+
+    def forward(self, x):
+        x = self.linear(x)
+        x = self.dropout(x)
+
+        b, s, _ = x.shape
+
+        x = x.view(b, s * self.sf, self.dim)
+        return x
+
+class DownSample(nn.Module):
+    def __init__(self, shorten_factor: int, dim: int, dropout:float):
+        super().__init__()
+        self.sf = shorten_factor
+        self.dim = dim
+
+        self.linear = nn.Linear(dim * shorten_factor , dim)
+        self.dropout = nn.Dropout(dropout)
+    
+    def forward(self, x):
+        b, s, d = x.shape
+        assert d == self.dim, f"Expected dim={self.dim}, got {d}"
+        assert s % self.sf == 0, f"Seq_len {s} not divisible by shorten_factor {self.sf}"
+
+        x = x.view(b, s // self.sf, d * self.sf) 
+
+        x = self.linear(x)
+        x = self.dropout(x)
+
+        return x
+    
 class InputEmbedding(nn.Module):
     def __init__(self, num_tokens: int, dim: int):
         super().__init__()
