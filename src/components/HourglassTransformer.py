@@ -13,7 +13,6 @@ class InputEmbedding(nn.Module):
     def forward(self, x):
         return self.embedding(x) * math.sqrt(self.dim)
     
-
 class PositionalEncoding(nn.Module):
     # Rotary positional encoding (RoPE)
     def __init__(self, dim: int, seq_len: int):
@@ -115,6 +114,7 @@ class LayerNormalization(nn.Module):
         return self.alpha * (x - mean) / (std + self.eps) + self.beta
     
 class ResidualConnection(nn.Module):
+    #pre-norm residual connection
     def __init__(self, f_dim: int, dropout: float):
         super().__init__()
         self.f_dim = f_dim
@@ -124,35 +124,6 @@ class ResidualConnection(nn.Module):
     def forward(self, x, sublayer):
         return x + self.dropout(sublayer(self.norm(x)))
     
-class EncoderBlock(nn.Module):
-    def __init__(self, 
-                 f_dim: int, 
-                 attention_block: MultiHeadSelfAttention,
-                 feed_forward_block: FeedForwardNetwork,
-                 dropout: float
-                 ):
-        super().__init__()
-        self.attention_block = attention_block
-        self.ffn = feed_forward_block
-        self.residuals = nn.ModuleList([ResidualConnection(f_dim, dropout) for _ in range(2)])
-
-    def forward(self, x: torch.Tensor, src_mask: torch.Tensor):
-        x = self.residuals[0](x, lambda x: self.attention_block(x, src_mask))
-        x = self.residuals[1](x, self.ffn)
-        return x
-    
-class Encoder(nn.Module):
-    def __init__(self, f_dim: int, layers: nn.ModuleList):
-        super().__init__()
-        self.f_dim = f_dim
-        self.layers = layers
-        self.norm = LayerNormalization(f_dim)
-
-    def forward(self, x, mask):
-        for layer in self.layers:
-            x = layer(x, mask)
-        return self.norm(x)
-    
 class ProjectionLayer(nn.Module):
     def __init__(self, dim, num_tokens):
         super().__init__()
@@ -160,4 +131,23 @@ class ProjectionLayer(nn.Module):
 
     def forward(self, x):
         return self.proj(x)
-    
+
+class Transformer(nn.Module):
+    def __init__(self, 
+                 f_dim: int, 
+                 dropout: float,
+                 attention_block: MultiHeadSelfAttention,
+                 feed_forward_block: FeedForwardNetwork
+                 ):
+        super().__init__()
+        self.norm = LayerNormalization(f_dim)
+        self.residuals = nn.ModuleList(ResidualConnection(f_dim, dropout) for _ in range(2))
+        self.dropout = dropout
+        self.attention = attention_block
+        self.FFN = feed_forward_block
+
+    def forward(self, x, mask):
+        x = self.residuals[0](x, lambda x: self.attention(x, mask))
+        x = self.residuals[1](x, self.FFN)
+        return x
+
