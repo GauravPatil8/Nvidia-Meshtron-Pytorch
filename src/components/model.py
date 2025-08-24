@@ -1,13 +1,13 @@
 import torch 
 import torch.nn as nn
 from src.components.HourglassTransformer import (
-    InputEmbedding,
-    build_hourglass_valley,
     Transformer,
-    MultiHeadSelfAttention,
+    InputEmbedding,
     ProjectionLayer,
     FeedForwardNetwork,
-    parse_hierarchy
+    MultiHeadSelfAttention,
+    parse_hierarchy,
+    build_hourglass_valley,
 )
 class Meshtron(nn.Module):
     def __init__(self,

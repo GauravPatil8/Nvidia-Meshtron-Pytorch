@@ -8,7 +8,7 @@ def parse_hierarchy(hierarchy: str):
 
     Parameters:
         hierarchy (str): A space-separated string specifying the transformer hierarchy.
-                        Format: "pre-block funnel post-block"
+                        Format: "pre-block funnel post-block, layer: n_blocks @ shortening factor (2@1)"
                         Example: "2@1 4@2 6@4 8@8 6@4 4@2 2@1"
                             - pre-block  : "2@1"
                             - funnel     : "4@2 6@4 8@8 6@4 4@2"
