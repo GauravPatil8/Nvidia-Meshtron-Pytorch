@@ -13,9 +13,7 @@ from dataclasses import dataclass
 
 @dataclass
 class MeshData:
-    encoder_input: torch.Tensor
     decoder_input: torch.Tensor
-    encoder_mask: torch.Tensor
     decoder_mask: torch.Tensor
     target: torch.Tensor
 
@@ -69,16 +67,6 @@ class PrimitiveDataset(Dataset):
         if num_dec_tokens < 0 or num_enc_tokens < 0:
             raise ValueError("Sentence is too long")
         
-        encoder_input = torch.cat(
-            [
-            self.SOS,
-            enc_input,
-            self.EOS,
-            torch.tensor([self.PAD] * num_enc_tokens, dtype=torch.int64)
-            ],
-            dim=0
-        )
-        
         decoder_input = torch.cat(
             [
                 self.SOS,
@@ -97,9 +85,7 @@ class PrimitiveDataset(Dataset):
             dim=0
         )
         return MeshData(
-            encoder_input=encoder_input,
             decoder_input=decoder_input,
-            encoder_mask=(encoder_input != self.PAD).unsqueeze(0).unsqueeze(0).int(), # (1, 1, seq_len)
             decoder_mask=(decoder_input != self.PAD).unsqueeze(0).int() & causal_mask(decoder_input.size(0)), # (1, seq_len) & (1, seq_len, seq_len),,
             target=target
         )
