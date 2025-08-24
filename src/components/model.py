@@ -26,7 +26,7 @@ class Meshtron(nn.Module):
         self.pre_blocks = nn.ModuleList([
             Transformer(dim, 
                         dropout, 
-                        MultiHeadSelfAttention(dim, n_heads, dropout, vocab_size), 
+                        MultiHeadSelfAttention(dim, n_heads, dropout), 
                         FeedForwardNetwork(dim, d_ff, dropout)
             ) for _ in range(n_pre_post_blocks)
         ])
@@ -43,7 +43,7 @@ class Meshtron(nn.Module):
         self.post_block = nn.ModuleList([
             Transformer(dim, 
                         dropout, 
-                        MultiHeadSelfAttention(dim, n_heads, dropout, vocab_size), 
+                        MultiHeadSelfAttention(dim, n_heads, dropout), 
                         FeedForwardNetwork(dim, d_ff, dropout)
             ) for _ in range(n_pre_post_blocks)
         ])

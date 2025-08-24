@@ -127,14 +127,13 @@ class PositionalEncoding(nn.Module):
     
 class MultiHeadSelfAttention(nn.Module):
     #vanilla attention block
-    def __init__(self, dim: int, num_heads: int, dropout: float, seq_len: int):
+    def __init__(self, dim: int, num_heads: int, dropout: float):
         super().__init__()
         assert dim % num_heads == 0, "dim must be divisible by num_heads"
 
         self.dim = dim
         self.heads = num_heads
         self.dropout = nn.Dropout(dropout)
-        self.seq_len = seq_len
         self.dim_k = dim // num_heads
 
         self.wq = nn.Linear(dim, dim, bias=False)
@@ -142,11 +141,12 @@ class MultiHeadSelfAttention(nn.Module):
         self.wv = nn.Linear(dim, dim, bias=False)
         self.wo = nn.Linear(dim, dim)
 
-        self.rope = PositionalEncoding(dim, seq_len)
 
     def forward(self, x: torch.Tensor, mask: torch.Tensor = None):
 
         batch_size, seq_len, _ = x.shape
+
+        self.rope = PositionalEncoding(self.dim, seq_len)
 
         Q = self.wq(x)
         K = self.wk(x)
@@ -246,7 +246,6 @@ class Layer(nn.Module):
                  shortening_factor: int,
                  dropout: float,
                  n_heads: int,
-                 seq_len: int,
                  num_blocks:int,
                  d_ff: int,
                  upflag: bool = False,
@@ -261,7 +260,7 @@ class Layer(nn.Module):
         self.upflag = upflag
         self.downflag = downflag
         self.blocks = nn.ModuleList([
-            Transformer(dim, dropout, MultiHeadSelfAttention(dim, n_heads, dropout, seq_len),FeedForwardNetwork(dim, d_ff, dropout))
+            Transformer(dim, dropout, MultiHeadSelfAttention(dim, n_heads, dropout),FeedForwardNetwork(dim, d_ff, dropout))
             for _ in range(num_blocks)
         ])
     
@@ -287,7 +286,6 @@ class Layer(nn.Module):
 def build_hourglass_valley(
         dim:int,
         num_of_heads: int,
-        seq_len: int,
         h_sfs: list[int],
         h_nl: list[int],
         d_ff: int,
@@ -305,7 +303,6 @@ def build_hourglass_valley(
             shortening_factor=sf,
             dropout=dropout,
             n_heads=num_of_heads,
-            seq_len=seq_len,
             num_blocks=n_layers,
             d_ff=d_ff,
             upflag=False,
@@ -319,7 +316,6 @@ def build_hourglass_valley(
             shortening_factor=sf[-1],
             dropout=dropout,
             n_heads=num_of_heads,
-            seq_len=seq_len,
             num_blocks=n_layers[-1],
             d_ff=d_ff,
             upflag=True,
@@ -336,7 +332,6 @@ def build_hourglass_valley(
             shortening_factor=sf,
             dropout=dropout,
             n_heads=num_of_heads,
-            seq_len=seq_len,
             num_blocks=n_layers,
             d_ff=d_ff,
             upflag=True,
