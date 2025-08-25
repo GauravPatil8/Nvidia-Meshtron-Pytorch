@@ -2,6 +2,7 @@ import torch
 import math
 import torch.nn as nn
 import torch.nn.functional as F
+from src.components.Attention import MultiHeadAttention
 
 def parse_hierarchy(hierarchy: str):
     """Parse hierarchy of the entire hourglass transformer.
@@ -90,90 +91,6 @@ class InputEmbedding(nn.Module):
     def forward(self, x):
         return self.embedding(x) * math.sqrt(self.dim)
     
-class PositionalEncoding(nn.Module):
-    # Rotary positional encoding (RoPE)
-    def __init__(self, dim: int, seq_len: int):
-        super().__init__()
-        self.dim = dim
-        self.seq_len = seq_len
-
-        assert dim % 2 == 0, "Embedding dimension must be even"
-
-
-        pos = torch.arange(seq_len, dtype=torch.float32).unsqueeze(1)
-        freqs = torch.exp(torch.arange(0, dim, 2).float() * (-math.log(10000) / dim))
-
-        angles = pos * freqs
-
-        self.register_buffer('cos', torch.cos(angles), persistent=False)
-        self.register_buffer('sin', torch.sin(angles), persistent=False)
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-
-        seq_len = x.shape[1]
-
-        if seq_len > self.seq_len:
-            raise ValueError(f"Input sequence length {seq_len} exceeds maximum {self.seq_len}")
-        
-        even = x[..., ::2]
-        odd = x[..., 1::2]
-
-        cos = self.cos[:seq_len, :].unsqueeze(0).expand(x.shape[0], -1, -1)
-        sin = self.sin[:seq_len, :].unsqueeze(0).expand(x.shape[0], -1, -1)
-
-        x_pe = torch.cat([even * cos - odd * sin, even * sin + odd * cos], dim = -1)
-
-        return x_pe
-    
-class MultiHeadSelfAttention(nn.Module):
-    #vanilla attention block
-    def __init__(self, dim: int, num_heads: int, dropout: float):
-        super().__init__()
-        assert dim % num_heads == 0, "dim must be divisible by num_heads"
-
-        self.dim = dim
-        self.heads = num_heads
-        self.dropout = nn.Dropout(dropout)
-        self.dim_k = dim // num_heads
-
-        self.wq = nn.Linear(dim, dim, bias=False)
-        self.wk = nn.Linear(dim, dim, bias=False)
-        self.wv = nn.Linear(dim, dim, bias=False)
-        self.wo = nn.Linear(dim, dim)
-
-
-    def forward(self, x: torch.Tensor, mask: torch.Tensor = None):
-
-        batch_size, seq_len, _ = x.shape
-
-        self.rope = PositionalEncoding(self.dim, seq_len)
-
-        Q = self.wq(x)
-        K = self.wk(x)
-        V = self.wv(x)
-
-        Q = self.rope(Q)
-        K = self.rope(K)
-
-        Q = Q.view(batch_size, seq_len, self.heads, self.dim_k).transpose(1,2)
-        K = K.view(batch_size, seq_len, self.heads, self.dim_k).transpose(1,2)
-        V = V.view(batch_size, seq_len, self.heads, self.dim_k).transpose(1,2)
-
-        attention_scores = (Q @ K.transpose(-2, -1)) * (math.sqrt(self.d_m))
-        
-        if mask is not None:
-            attention_scores = attention_scores.masked_fill(mask == 0, -1e9)
-        
-        attention_weights = self.dropout(F.softmax(attention_scores, dim = -1))
-
-        out = attention_weights @ V
-
-        out = out.transpose(1,2).contiguous().view(batch_size, seq_len, self.dim)
-
-        out = self.wo(out)
-
-        return out
-    
 class FeedForwardNetwork(nn.Module):
     def __init__(self, dim:int, d_ff:int, dropout:float, activation):
         super().__init__()
@@ -225,7 +142,7 @@ class Transformer(nn.Module):
     def __init__(self, 
                  f_dim: int, 
                  dropout: float,
-                 attention_block: MultiHeadSelfAttention,
+                 attention_block: MultiHeadAttention,
                  feed_forward_block: FeedForwardNetwork,
                  ):
         super().__init__()
@@ -261,7 +178,7 @@ class Layer(nn.Module):
         self.upflag = upflag
         self.downflag = downflag
         self.blocks = nn.ModuleList([
-            Transformer(dim, dropout, MultiHeadSelfAttention(dim, n_heads, dropout),FeedForwardNetwork(dim, d_ff, dropout, SwiGLU))
+            Transformer(dim, dropout, MultiHeadAttention(dim, n_heads, dropout),FeedForwardNetwork(dim, d_ff, dropout, SwiGLU))
             for _ in range(num_blocks)
         ])
     
