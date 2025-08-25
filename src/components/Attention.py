@@ -6,7 +6,7 @@ from src.components.PositionalEncoding import RoPEncoding
 
 class MultiHeadAttention(nn.Module):
     #vanilla attention block
-    def __init__(self, dim: int, num_heads: int, dropout: float):
+    def __init__(self, dim: int, num_heads: int, dropout: float, rope_flag: bool = False):
         super().__init__()
         assert dim % num_heads == 0, "dim must be divisible by num_heads"
 
@@ -19,23 +19,26 @@ class MultiHeadAttention(nn.Module):
         self.wv = nn.Linear(dim, dim, bias=False)
         self.wo = nn.Linear(dim, dim)
 
+        self.rope_flag = rope_flag
 
-    def forward(self, x: torch.Tensor, mask: torch.Tensor = None):
 
-        batch_size, seq_len, dim = x.shape
+    def forward(self, Q: torch.Tensor, K: torch.Tensor, V: torch.Tensor, mask: torch.Tensor = None):
 
-        self.rope = RoPEncoding(self.dim, seq_len)
+        batch_size, seq_len, dim = Q.shape
+        _, n_k, _ = K.shape
+        self.rope = RoPEncoding(dim, seq_len)
 
-        Q = self.wq(x)
-        K = self.wk(x)
-        V = self.wv(x)
+        Q = self.wq(Q)
+        K = self.wk(K)
+        V = self.wv(V)
 
-        Q = self.rope(Q)
-        K = self.rope(K)
+        if self.rope_flag:
+            Q = self.rope(Q)
+            K = self.rope(K)
 
         Q = Q.view(batch_size, seq_len, self.heads, self.dim_k).transpose(1,2)
-        K = K.view(batch_size, seq_len, self.heads, self.dim_k).transpose(1,2)
-        V = V.view(batch_size, seq_len, self.heads, self.dim_k).transpose(1,2)
+        K = K.view(batch_size, n_k, self.heads, self.dim_k).transpose(1,2)
+        V = V.view(batch_size, n_k, self.heads, self.dim_k).transpose(1,2)
 
         attention_scores = (Q @ K.transpose(-2, -1)) * (math.sqrt(self.d_m))
         
@@ -68,17 +71,21 @@ class SlidingWindowAttention(nn.Module):
         self.wv = nn.Linear(dim, dim, bias=False)
         self.wo = nn.Linear(dim, dim)
 
-    def forward(self, x: torch.Tensor, mask: torch.Tensor | None):
+    def forward(self, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, mask: torch.Tensor | None):
 
-        b, s, d = x.shape
+        b, s, d = q.shape
+        _, s_k, _ = k.shape
+        q = self.wq(q)
+        k = self.wk(k)
+        v = self.wv(v)
 
-        q = self.wq(x)
-        k = self.wk(x)
-        v = self.wv(x)
-
+        self.rope = RoPEncoding(d, s)
+        q = self.rope(q)
+        k = self.rope(k)
+        
         q = q.view(b, s, self.heads, self.dim_k).transpose(1, 2)
-        k = k.view(b, s, self.heads, self.dim_k).transpose(1, 2)
-        v = v.view(b, s, self.heads, self.dim_k).transpose(1, 2)
+        k = k.view(b, s_k, self.heads, self.dim_k).transpose(1, 2)
+        v = v.view(b, s_k, self.heads, self.dim_k).transpose(1, 2)
 
         out = []
         for i in range(s):
