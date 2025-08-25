@@ -8,6 +8,7 @@ from src.components.HourglassTransformer import (
     MultiHeadSelfAttention,
     parse_hierarchy,
     build_hourglass_valley,
+    SwiGLU
 )
 class Meshtron(nn.Module):
     def __init__(self,
@@ -27,7 +28,7 @@ class Meshtron(nn.Module):
             Transformer(dim, 
                         dropout, 
                         MultiHeadSelfAttention(dim, n_heads, dropout), 
-                        FeedForwardNetwork(dim, d_ff, dropout)
+                        FeedForwardNetwork(dim, d_ff, dropout, SwiGLU)
             ) for _ in range(n_pre_post_blocks)
         ])
         self.valley = build_hourglass_valley(
@@ -44,7 +45,7 @@ class Meshtron(nn.Module):
             Transformer(dim, 
                         dropout, 
                         MultiHeadSelfAttention(dim, n_heads, dropout), 
-                        FeedForwardNetwork(dim, d_ff, dropout)
+                        FeedForwardNetwork(dim, d_ff, dropout, SwiGLU)
             ) for _ in range(n_pre_post_blocks)
         ])
         self.out_proj = ProjectionLayer(dim, vocab_size)

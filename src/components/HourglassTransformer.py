@@ -18,7 +18,7 @@ def parse_hierarchy(hierarchy: str):
         - relative_shortening_factor (list[int]) - "List of relative scale factors for only the funnel levels."
         - n_blocks (list[int]) - "List of number of blocks at each funnel level."
         - number_of_pre_post_blocks (int) - " Number of blocks in the pre and post blocks."
-"""
+    """
 
     levels = hierarchy.split(' ')
     if levels != levels[::-1]:
@@ -175,15 +175,16 @@ class MultiHeadSelfAttention(nn.Module):
         return out
     
 class FeedForwardNetwork(nn.Module):
-    def __init__(self, dim:int, d_ff:int, dropout:float):
+    def __init__(self, dim:int, d_ff:int, dropout:float, activation):
         super().__init__()
         self.linear1 = nn.Linear(dim, 2 * d_ff) #for swiglu chunking
         self.linear2 = nn.Linear(d_ff, dim)
         self.dropout = nn.Dropout(dropout)
+        self.activation = activation
     
     def forward(self, x):
         x = self.linear1(x)
-        x = SwiGLU(x)
+        x = self.activation(x)
         x = self.dropout(x)
         return self.linear2(x)
 
@@ -260,7 +261,7 @@ class Layer(nn.Module):
         self.upflag = upflag
         self.downflag = downflag
         self.blocks = nn.ModuleList([
-            Transformer(dim, dropout, MultiHeadSelfAttention(dim, n_heads, dropout),FeedForwardNetwork(dim, d_ff, dropout))
+            Transformer(dim, dropout, MultiHeadSelfAttention(dim, n_heads, dropout),FeedForwardNetwork(dim, d_ff, dropout, SwiGLU))
             for _ in range(num_blocks)
         ])
     
