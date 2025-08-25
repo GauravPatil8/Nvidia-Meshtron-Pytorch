@@ -5,11 +5,12 @@ from src.components.HourglassTransformer import (
     InputEmbedding,
     ProjectionLayer,
     FeedForwardNetwork,
-    MultiHeadSelfAttention,
     parse_hierarchy,
     build_hourglass_valley,
     SwiGLU
 )
+from src.components.Attention import MultiHeadAttention
+
 class Meshtron(nn.Module):
     def __init__(self,
                  dim: int,
@@ -27,7 +28,7 @@ class Meshtron(nn.Module):
         self.pre_blocks = nn.ModuleList([
             Transformer(dim, 
                         dropout, 
-                        MultiHeadSelfAttention(dim, n_heads, dropout), 
+                        MultiHeadAttention(dim, n_heads, dropout, rope_flag=True), 
                         FeedForwardNetwork(dim, d_ff, dropout, SwiGLU)
             ) for _ in range(n_pre_post_blocks)
         ])
@@ -44,7 +45,7 @@ class Meshtron(nn.Module):
         self.post_block = nn.ModuleList([
             Transformer(dim, 
                         dropout, 
-                        MultiHeadSelfAttention(dim, n_heads, dropout), 
+                        MultiHeadAttention(dim, n_heads, dropout, rope_flag=True), 
                         FeedForwardNetwork(dim, d_ff, dropout, SwiGLU)
             ) for _ in range(n_pre_post_blocks)
         ])

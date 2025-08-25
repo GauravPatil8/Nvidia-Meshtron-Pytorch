@@ -2,7 +2,7 @@ import torch
 import math
 import torch.nn as nn
 import torch.nn.functional as F
-from src.components.Attention import MultiHeadAttention
+from src.components.Attention import SlidingWindowAttention, MultiHeadAttention
 
 def parse_hierarchy(hierarchy: str):
     """Parse hierarchy of the entire hourglass transformer.
@@ -142,7 +142,7 @@ class Transformer(nn.Module):
     def __init__(self, 
                  f_dim: int, 
                  dropout: float,
-                 attention_block: MultiHeadAttention,
+                 attention_block: MultiHeadAttention | SlidingWindowAttention,
                  feed_forward_block: FeedForwardNetwork,
                  ):
         super().__init__()
@@ -153,7 +153,7 @@ class Transformer(nn.Module):
         self.FFN = feed_forward_block
 
     def forward(self, x, mask):
-        x = self.residuals[0](x, lambda x: self.attention(x, mask))
+        x = self.residuals[0](x, lambda x: self.attention(x, x, x, mask))
         x = self.residuals[1](x, self.FFN)
         return x
 
@@ -164,6 +164,7 @@ class Layer(nn.Module):
                  shortening_factor: int,
                  dropout: float,
                  n_heads: int,
+                 window_size: int,
                  num_blocks:int,
                  d_ff: int,
                  upflag: bool = False,
@@ -178,7 +179,7 @@ class Layer(nn.Module):
         self.upflag = upflag
         self.downflag = downflag
         self.blocks = nn.ModuleList([
-            Transformer(dim, dropout, MultiHeadAttention(dim, n_heads, dropout),FeedForwardNetwork(dim, d_ff, dropout, SwiGLU))
+            Transformer(dim, dropout, SlidingWindowAttention(dim, window_size, n_heads, dropout),FeedForwardNetwork(dim, d_ff, dropout, SwiGLU))
             for _ in range(num_blocks)
         ])
     
