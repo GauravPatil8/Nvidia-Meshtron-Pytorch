@@ -16,6 +16,7 @@ class Meshtron(nn.Module):
                  dim: int,
                  vocab_size: int,
                  n_heads: int,
+                 attn_window_size: int,
                  d_ff: int,
                  hierarchy: str,
                  dropout: float
@@ -35,6 +36,7 @@ class Meshtron(nn.Module):
         self.valley = build_hourglass_valley(
             dim,
             n_heads,
+            attn_window_size,
             vocab_size,
             self.sf,
             self.n_blocks,
