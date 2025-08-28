@@ -51,6 +51,8 @@ class LinearUpSample(nn.Module):
         self.linear = nn.Linear(dim, shorten_factor * dim)
 
     def forward(self, x, skip):
+        shift = self.sf - 1
+        x = F.pad(x, (0,0,shift, -shift), value=0.) #causal padding for preventing leak
         x = self.linear(x)
         b, s, _ = x.shape
 
@@ -133,17 +135,28 @@ class Transformer(nn.Module):
                  dropout: float,
                  attention_block: MultiHeadAttention | SlidingWindowAttention,
                  feed_forward_block: FeedForwardNetwork,
+                 conditioning_flag: bool = False
                  ):
         super().__init__()
         self.norm = LayerNormalization(f_dim)
-        self.residuals = nn.ModuleList(ResidualConnection(f_dim, dropout) for _ in range(2))
+        self.conditioning_flag = conditioning_flag
+        if conditioning_flag:
+            self.residuals = nn.ModuleList(ResidualConnection(f_dim, dropout) for _ in range(3))
+        else:
+            self.residuals = nn.ModuleList(ResidualConnection(f_dim, dropout) for _ in range(2))
+
         self.dropout = dropout
         self.attention = attention_block
         self.FFN = feed_forward_block
 
-    def forward(self, x, mask):
+    def forward(self,*, x: torch.Tensor, conditions: torch.Tensor | None, mask: torch.Tensor | None):
         x = self.residuals[0](x, lambda x: self.attention(x, x, x, mask))
-        x = self.residuals[1](x, self.FFN)
+        if self.conditioning_flag:
+            x = self.residuals[1](x, lambda x: self.attention(x, conditions, conditions, mask))
+            x = self.residuals[2](x, self.FFN)
+        else:
+            x = self.residuals[1](x, self.FFN)
+
         return x
 
 class Layer(nn.Module):
@@ -157,7 +170,9 @@ class Layer(nn.Module):
                  window_size: int,
                  num_blocks:int,
                  d_ff: int,
-                 downflag: bool = False):
+                 downflag: bool = False,
+                 condition_every_n_layers:bool = False,
+                 use_conditioning:bool = False):
         super().__init__()
         self.sf = shortening_factor
         self.dropout = dropout
@@ -166,22 +181,27 @@ class Layer(nn.Module):
         self.residuals = ResidualConnection(dim, dropout)
         self.downflag = downflag
         self.blocks = nn.ModuleList([
-            Transformer(dim, dropout, SlidingWindowAttention(dim, window_size, n_heads, dropout),FeedForwardNetwork(dim, d_ff, dropout, SwiGLU))
-            for _ in range(num_blocks)
+            Transformer(dim,
+                        dropout,
+                        SlidingWindowAttention(dim, window_size, n_heads, dropout),
+                        FeedForwardNetwork(dim, d_ff, dropout, SwiGLU),
+                        use_conditioning = use_conditioning and (i % condition_every_n_layers == 0),
+                        )
+            for i in range(num_blocks)
         ])
     
-    def forward(self, x, mask):
+    def forward(self, x, conditions, mask):
         
         if self.downflag:
             x = self.downsample(x)
 
         #tranformer blocks   
-        def run_blocks(x, mask):
+        def run_blocks(x, conditions, mask):
             for block in self.blocks:
-                x = block(x, mask)
+                x = block(x = x, conditions = conditions, mask = mask)
             return x
 
-        x = self.residuals(x, lambda x: run_blocks(x, mask))
+        x = self.residuals(x, lambda x: run_blocks(x, conditions, mask))
 
         return x
         
@@ -194,6 +214,8 @@ def build_hourglass_valley(
         h_nl: list[int],
         d_ff: int,
         dropout: float,
+        condition_every_n_layers: bool,
+        use_conditioning: bool
     ) -> nn.ModuleList:
     
     assert len(h_sfs) == len(h_nl) >= 1
@@ -211,6 +233,8 @@ def build_hourglass_valley(
             num_blocks=n_layers,
             d_ff=d_ff,
             downflag=True,
+            condition_every_n_layers=condition_every_n_layers,
+            use_conditioning=use_conditioning
         )
         down_layers.append(layer)
 
@@ -224,6 +248,8 @@ def build_hourglass_valley(
             num_blocks=n_layers[-1],
             d_ff=d_ff,
             downflag=True,
+            condition_every_n_layers=condition_every_n_layers,
+            use_conditioning=use_conditioning
         )
 
 
@@ -241,6 +267,8 @@ def build_hourglass_valley(
             num_blocks=n_layers,
             d_ff=d_ff,
             downflag=False,
+            condition_every_n_layers=condition_every_n_layers,
+            use_conditioning=use_conditioning
         )
         up_layers.append(layer)
 
