@@ -1,11 +1,11 @@
-import torch 
 import torch.nn as nn
+import torch.nn.functional as F 
 from src.components.HourglassTransformer import (
     Transformer,
     InputEmbedding,
     ProjectionLayer,
     FeedForwardNetwork,
-    UpSample,
+    LinearUpSample,
     parse_hierarchy,
     build_hourglass_valley,
     SwiGLU
@@ -14,6 +14,7 @@ from src.components.Attention import MultiHeadAttention
 
 class Meshtron(nn.Module):
     def __init__(self,
+                 *,
                  dim: int,
                  vocab_size: int,
                  n_heads: int,
@@ -27,7 +28,7 @@ class Meshtron(nn.Module):
         self.sf = shortening_factor
         self.n_blocks = num_blocks
         self.embedding = InputEmbedding(vocab_size, dim)
-        self.up_sample = UpSample(shortening_factor)
+        self.up_sample = LinearUpSample(shortening_factor)
         self.pre_blocks = nn.ModuleList([
             Transformer(dim, 
                         dropout, 
@@ -69,7 +70,9 @@ class Meshtron(nn.Module):
 
         x = self.center_layer(x, mask)
 
+        shift = self.sf - 1
         for block, skip in zip(self.up_valley, reversed(skips)):
+            x = F.pad(x, (0,0,shift, -shift), value=0.) #causal padding for preventing leak
             x = self.up_sample(x, skip)
             x = block(x, mask)
 
