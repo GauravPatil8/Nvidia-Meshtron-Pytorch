@@ -5,6 +5,7 @@ from src.components.HourglassTransformer import (
     InputEmbedding,
     ProjectionLayer,
     FeedForwardNetwork,
+    UpSample,
     parse_hierarchy,
     build_hourglass_valley,
     SwiGLU
@@ -26,6 +27,7 @@ class Meshtron(nn.Module):
         self.sf = shortening_factor
         self.n_blocks = num_blocks
         self.embedding = InputEmbedding(vocab_size, dim)
+        self.up_sample = UpSample(shortening_factor)
         self.pre_blocks = nn.ModuleList([
             Transformer(dim, 
                         dropout, 
@@ -33,7 +35,7 @@ class Meshtron(nn.Module):
                         FeedForwardNetwork(dim, d_ff, dropout, SwiGLU)
             ) for _ in range(n_pre_post_blocks)
         ])
-        self.valley = build_hourglass_valley(
+        self.down_valley, self.center_layer, self.up_valley = build_hourglass_valley(
             dim,
             n_heads,
             attn_window_size,
@@ -54,13 +56,22 @@ class Meshtron(nn.Module):
         self.out_proj = ProjectionLayer(dim, vocab_size)
 
     def forward(self, x, mask):
+        skips = [] #holds skip connection values, used in upsampling
         x = self.embedding(x)
 
         for block in self.pre_blocks:
             x = block(x, mask)
+        skips.append(x)
+        
+        for block in self.down_valley:
+            x = block(x, mask)
+            skips.append(x)
 
-        for layer in self.valley:
-            x = layer(x, mask)
+        x = self.center_layer(x, mask)
+
+        for block, skip in zip(self.up_valley, reversed(skips)):
+            x = self.up_sample(x, skip)
+            x = block(x, mask)
 
         for block in self.post_blocks:
             x = block(x, mask)
