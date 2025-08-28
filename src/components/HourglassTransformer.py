@@ -42,43 +42,33 @@ def SwiGLU(x: torch.Tensor):
     x1, x2 = x.split(2, dim=-1)
     return F.silu(x1) * x2
 
-class UpSample(nn.Module):
-    def __init__(self, shorten_factor: int):
+class LinearUpSample(nn.Module):
+    def __init__(self, shorten_factor: int, dim: int):
         super().__init__()
         self.sf = shorten_factor
-        
+        self.dim = dim
+
+        self.linear = nn.Linear(dim, shorten_factor * dim)
+
     def forward(self, x, skip):
-        b, s, d = x.shape
-        b_p, s_p, d_p = skip.shape
+        x = self.linear(x)
+        b, s, _ = x.shape
 
-        assert b == b_p and d == d_p, "Batch and feature dimensions must match"
+        x = x.view(b, s * self.sf, self.dim)
+        x = x + skip
+        return x
 
-        out = []
-        i, j = 0, 0
-
-        while i < s_p or j < s:
-            # take from skip
-            if i < s_p:
-                take = min(self.sf - 1, s_p - i)
-                out.append(skip[:, i:i+take, :])
-                i += take
-
-            # take from x
-            if j < s:
-                take = min(1, s - j)  # always take 1
-                out.append(x[:, j:j+take, :])
-                j += take
-
-        return torch.cat(out, dim=1)
-
-class DownSample(nn.Module):
-    def __init__(self, shorten_factor: int):
+class LinearDownSample(nn.Module):
+    def __init__(self, shorten_factor: int, dim: int):
         super().__init__()
         self.sf = shorten_factor
+        self.dim = dim
+        self.linear = nn.Linear(dim*shorten_factor, dim)
         
     def forward(self, x):
-        #Letting only kth element pass to other layer, where k is the sf
-        return x[:, (self.sf - 1)::self.sf, :]
+        x = self.linear(x)
+        b, s, _ = x.shape
+        x = x.view(b, s // self.sf, self.dim*self.sf)
     
 class InputEmbedding(nn.Module):
     def __init__(self, num_tokens: int, dim: int):
@@ -159,6 +149,7 @@ class Transformer(nn.Module):
 class Layer(nn.Module):
 
     def __init__(self,
+                 *,
                  dim: int,
                  shortening_factor: int,
                  dropout: float,
@@ -171,8 +162,7 @@ class Layer(nn.Module):
         self.sf = shortening_factor
         self.dropout = dropout
         self.norm = LayerNormalization(dim)
-        self.downsample = DownSample(dim, self.sf)
-        self.upsample = UpSample(dim, self.sf)
+        self.downsample = LinearDownSample(dim, self.sf)
         self.residuals = ResidualConnection(dim, dropout)
         self.downflag = downflag
         self.blocks = nn.ModuleList([
@@ -192,7 +182,7 @@ class Layer(nn.Module):
             return x
 
         x = self.residuals(x, lambda x: run_blocks(x, mask))
-         
+
         return x
         
 
