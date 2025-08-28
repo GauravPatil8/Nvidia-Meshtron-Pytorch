@@ -6,12 +6,11 @@ from src.components.PositionalEncoding import RoPEncoding
 
 class MultiHeadAttention(nn.Module):
     #vanilla attention block
-    def __init__(self, dim: int, num_heads: int, dropout: float, rope_flag: bool = False):
+    def __init__(self, dim: int, num_heads: int, rope_flag: bool = False):
         super().__init__()
         assert dim % num_heads == 0, "dim must be divisible by num_heads"
 
         self.heads = num_heads
-        self.dropout = nn.Dropout(dropout)
         self.dim_k = dim // num_heads
 
         self.wq = nn.Linear(dim, dim, bias=False)
@@ -40,7 +39,7 @@ class MultiHeadAttention(nn.Module):
         K = K.view(batch_size, n_k, self.heads, self.dim_k).transpose(1,2)
         V = V.view(batch_size, n_k, self.heads, self.dim_k).transpose(1,2)
 
-        attention_scores = (Q @ K.transpose(-2, -1)) * (math.sqrt(self.d_m))
+        attention_scores = (Q @ K.transpose(-2, -1)) * (math.sqrt(self.d_k))
         
         if mask is not None:
             attention_scores = attention_scores.masked_fill(mask == 0, -1e9)
