@@ -43,43 +43,42 @@ def SwiGLU(x: torch.Tensor):
     return F.silu(x1) * x2
 
 class UpSample(nn.Module):
-    def __init__(self, shorten_factor: int, dim: int, dropout:float):
+    def __init__(self, shorten_factor: int):
         super().__init__()
         self.sf = shorten_factor
-        self.dim = dim
+        
+    def forward(self, x, skip):
+        b, s, d = x.shape
+        b_p, s_p, d_p = skip.shape
 
-        self.linear = nn.Linear(dim, shorten_factor * dim)
-        self.dropout = nn.Dropout(dropout)
+        assert b == b_p and d == d_p, "Batch and feature dimensions must match"
 
-    def forward(self, x):
-        x = self.linear(x)
-        x = self.dropout(x)
+        out = []
+        i, j = 0, 0
 
-        b, s, _ = x.shape
+        while i < s_p or j < s:
+            # take from skip
+            if i < s_p:
+                take = min(self.sf - 1, s_p - i)
+                out.append(skip[:, i:i+take, :])
+                i += take
 
-        x = x.view(b, s * self.sf, self.dim)
-        return x
+            # take from x
+            if j < s:
+                take = min(1, s - j)  # always take 1
+                out.append(x[:, j:j+take, :])
+                j += take
+
+        return torch.cat(out, dim=1)
 
 class DownSample(nn.Module):
-    def __init__(self, shorten_factor: int, dim: int, dropout:float):
+    def __init__(self, shorten_factor: int):
         super().__init__()
         self.sf = shorten_factor
-        self.dim = dim
-
-        self.linear = nn.Linear(dim * shorten_factor , dim)
-        self.dropout = nn.Dropout(dropout)
-    
+        
     def forward(self, x):
-        b, s, d = x.shape
-        assert d == self.dim, f"Expected dim={self.dim}, got {d}"
-        assert s % self.sf == 0, f"Seq_len {s} not divisible by shorten_factor {self.sf}"
-
-        x = x.view(b, s // self.sf, d * self.sf) 
-
-        x = self.linear(x)
-        x = self.dropout(x)
-
-        return x
+        #Letting only kth element pass to other layer, where k is the sf
+        return x[:, (self.sf - 1)::self.sf, :]
     
 class InputEmbedding(nn.Module):
     def __init__(self, num_tokens: int, dim: int):
@@ -167,7 +166,6 @@ class Layer(nn.Module):
                  window_size: int,
                  num_blocks:int,
                  d_ff: int,
-                 upflag: bool = False,
                  downflag: bool = False):
         super().__init__()
         self.sf = shortening_factor
@@ -176,7 +174,6 @@ class Layer(nn.Module):
         self.downsample = DownSample(dim, self.sf)
         self.upsample = UpSample(dim, self.sf)
         self.residuals = ResidualConnection(dim, dropout)
-        self.upflag = upflag
         self.downflag = downflag
         self.blocks = nn.ModuleList([
             Transformer(dim, dropout, SlidingWindowAttention(dim, window_size, n_heads, dropout),FeedForwardNetwork(dim, d_ff, dropout, SwiGLU))
@@ -195,9 +192,6 @@ class Layer(nn.Module):
             return x
 
         x = self.residuals(x, lambda x: run_blocks(x, mask))
-
-        if self.upflag:
-            x = self.upsample(x)
          
         return x
         
@@ -214,7 +208,7 @@ def build_hourglass_valley(
     
     assert len(h_sfs) == len(h_nl) >= 1
 
-    funnel = nn.ModuleList()
+    down_layers = nn.ModuleList()
 
     #funneling down
     for sf, n_layers in list(zip(h_sfs, h_nl))[:-1]:
@@ -226,10 +220,9 @@ def build_hourglass_valley(
             window_size=window_size,
             num_blocks=n_layers,
             d_ff=d_ff,
-            upflag=False,
             downflag=True,
         )
-        funnel.append(layer)
+        down_layers.append(layer)
 
     #middle layer
     center_layer = Layer(
@@ -240,14 +233,14 @@ def build_hourglass_valley(
             window_size=window_size,
             num_blocks=n_layers[-1],
             d_ff=d_ff,
-            upflag=True,
             downflag=True,
         )
-    funnel.append(center_layer)
+
 
     #funneling up
     up_sf = [sf for sf in reversed(h_sfs)][1:]
     up_nl = [nl for nl in reversed(h_nl)][1:]
+    up_layers = nn.ModuleList()
     for sf, n_layers in reversed(list(zip(up_sf, up_nl))):
         layer = Layer(
             dim=dim,
@@ -257,9 +250,8 @@ def build_hourglass_valley(
             window_size=window_size,
             num_blocks=n_layers,
             d_ff=d_ff,
-            upflag=True,
             downflag=False,
         )
-        funnel.append(layer)
+        up_layers.append(layer)
 
-    return funnel
+    return down_layers, center_layer, up_layers
