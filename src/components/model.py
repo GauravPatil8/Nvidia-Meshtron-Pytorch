@@ -84,8 +84,13 @@ class Meshtron(nn.Module):
 
         self.out_proj = ProjectionLayer(dim, vocab_size)
 
-    def forward(self, x, conditioning_data, mask):
+    def forward(self, x, conditioning_data, face_count, quad_ratio, mask):
 
+        def run_block(block):
+            cond = self.point_cloud_conditioning(conditioning_data, face_count, quad_ratio) if block.use_conditioning else None
+            x = block(x=x, conditions=cond, mask=mask)
+            return x
+        
         skips = [] #holds skip connection values, used in upsampling
         x = self.embedding(x)
 
@@ -94,14 +99,12 @@ class Meshtron(nn.Module):
 
         # Pre valley block
         for block in self.pre_blocks:
-            cond = self.point_cloud_conditioning(conditioning_data) if block.use_conditioning else None
-            x = block(x=x, conditions=cond, mask=mask)
+            x = run_block(block)
         skips.append(x) # Appending residuals to be added later
 
         #Downsampling valley
         for block in self.down_valley:
-            cond = self.point_cloud_conditioning(conditioning_data) if block.use_conditioning else None
-            x = block(x=x, conditions=cond, mask=mask)
+            x = run_block(block)
             skips.append(x)
 
         #center layer of valley
@@ -111,15 +114,13 @@ class Meshtron(nn.Module):
         #upsampling valley
         for block, skip in zip(self.up_valley, reversed(skips[1:])):
             x = self.up_sample(x, skip)
-            cond = self.point_cloud_conditioning(conditioning_data) if block.use_conditioning else None
-            x = block(x=x, conditions=cond, mask=mask)
+            x = run_block(block)
 
         #upsampling for the last vanilla block
         x = self.up_sample(x, skips[0])
 
         #last vanilla blocks
         for block in self.post_blocks:
-            cond = self.point_cloud_conditioning(conditioning_data) if block.use_conditioning else None
-            x = block(x=x, conditions=cond, mask=mask)
+            x = run_block(block)
         
         return self.out_proj(x)
