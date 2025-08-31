@@ -11,13 +11,18 @@ class ConditioningEncoder(nn.Module):
                  dim_ffn:int,
                  num_blocks:int,
                  heads:int,
-                 num_self_attention: int):
+                 num_self_attention: int,
+                 ):
         super().__init__()
 
         self.latents = nn.Parameter(torch.randn(num_latents, latent_dim))
         self.layers = nn.ModuleList([])
         self.self_attn = nn.ModuleList([])
-
+        self.mlp = nn.Sequential(
+            nn.Linear(1, dim_ffn),
+            nn.ReLU(),
+            nn.Linear(dim_ffn, latent_dim)
+        )
         for _ in range(num_self_attention):
             self.self_attn.append([
                 MultiHeadAttention(latent_dim, heads), # does self attention
@@ -42,13 +47,21 @@ class ConditioningEncoder(nn.Module):
             self.layers.append(block)
                 
             
-    def forward(self, inputs):
-        b = inputs.shape[0]
+    def forward(self, point_input, face_count,
+                 quad_ratio):
+        b = point_input.shape[0]
 
-        latents = self.latents.unsqueeze(0).expand(b,-1,-1)
+        latents = self.latents.unsqueeze(0).expand(b,-1,-1) 
+
+        face_count_enc = self.mlp(torch.tensor(face_count.view(b, 1), dtype=torch.float32))
+        quad_ratio_enc = self.mlp(torch.tensor(quad_ratio.view(b, 1), dtype=torch.float32))
+
+        face_count_enc.unsqeeze_(1)
+        quad_ratio_enc.unsqeeze_(1)
+
 
         for cross_attn, norm1, cross_ffn,self_attn_blocks in self.layers:
-            latents = latents + cross_attn(latents, inputs, inputs)
+            latents = latents + cross_attn(latents, point_input, point_input)
             latents = norm1(latents)
             latents = latents + cross_ffn(latents)
             
@@ -57,4 +70,4 @@ class ConditioningEncoder(nn.Module):
                 latents = latents + ffn(latents)
                 latents = norm(latents)
 
-        return latents
+        return torch.cat([latents, face_count_enc, quad_ratio_enc], dim=1)
