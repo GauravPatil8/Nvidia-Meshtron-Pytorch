@@ -1,5 +1,6 @@
 import torch.nn as nn
-import torch.nn.functional as F 
+from src.components.Attention import MultiHeadAttention
+from src.components.PerceiverEncoder import ConditioningEncoder
 from src.components.HourglassTransformer import (
     Transformer,
     InputEmbedding,
@@ -10,8 +11,6 @@ from src.components.HourglassTransformer import (
     build_hourglass_valley,
     SwiGLU
 )
-from src.components.Attention import MultiHeadAttention
-from src.components.PerceiverEncoder import ConditioningEncoder
 
 
 class Meshtron(nn.Module):
@@ -40,6 +39,7 @@ class Meshtron(nn.Module):
         self.embedding = InputEmbedding(vocab_size, dim)
         self.up_sample = LinearUpSample(shortening_factor)
         self.use_conditioning = use_conditioning
+
         self.point_cloud_conditioning = ConditioningEncoder(
             num_latents=con_num_latents,
             latent_dim=con_latent_dim,
@@ -81,6 +81,7 @@ class Meshtron(nn.Module):
                         conditioning_flag= use_conditioning and (i % condition_every_n_layers == 0)
             ) for i in range(n_pre_post_blocks)
         ])
+
         self.out_proj = ProjectionLayer(dim, vocab_size)
 
     def forward(self, x, conditioning_data, mask):
@@ -108,7 +109,7 @@ class Meshtron(nn.Module):
 
         
         #upsampling valley
-        for block, skip in zip(self.up_valley, reversed(skips)):
+        for block, skip in zip(self.up_valley, reversed(skips[1:])):
             x = self.up_sample(x, skip)
             cond = self.point_cloud_conditioning(conditioning_data) if block.use_conditioning else None
             x = block(x=x, conditions=cond, mask=mask)
