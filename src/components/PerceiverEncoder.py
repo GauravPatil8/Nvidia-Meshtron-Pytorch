@@ -18,13 +18,18 @@ class ConditioningEncoder(nn.Module):
         self.latents = nn.Parameter(torch.randn(num_latents, latent_dim))
         self.layers = nn.ModuleList([])
         self.self_attn = nn.ModuleList([])
-        self.mlp = nn.Sequential(
+        self.face_count_mlp = nn.Sequential(
+            nn.Linear(1, dim_ffn),
+            nn.ReLU(),
+            nn.Linear(dim_ffn, latent_dim)
+        )
+        self.quad_ratio_mlp = nn.Sequential(
             nn.Linear(1, dim_ffn),
             nn.ReLU(),
             nn.Linear(dim_ffn, latent_dim)
         )
         for _ in range(num_self_attention):
-            self.self_attn.append([
+            self.self_attn.append(nn.ModuleList([
                 MultiHeadAttention(latent_dim, heads), # does self attention
                 nn.Sequential(
                     nn.Linear(latent_dim, dim_ffn),
@@ -32,7 +37,7 @@ class ConditioningEncoder(nn.Module):
                     nn.Linear(dim_ffn, latent_dim)
                 ),
                 nn.LayerNorm(latent_dim)
-                ])
+                ]))
         for _ in range(num_blocks):
             block = [
                 MultiHeadAttention(latent_dim, heads), # does cross attention
@@ -44,7 +49,7 @@ class ConditioningEncoder(nn.Module):
                 ),
                 self.self_attn
             ]
-            self.layers.append(block)
+            self.layers.append(nn.ModuleList(block))
                 
             
     def forward(self, point_input, face_count,
@@ -53,11 +58,11 @@ class ConditioningEncoder(nn.Module):
 
         latents = self.latents.unsqueeze(0).expand(b,-1,-1) 
 
-        face_count_enc = self.mlp(torch.tensor(face_count.view(b, 1), dtype=torch.float32))
-        quad_ratio_enc = self.mlp(torch.tensor(quad_ratio.view(b, 1), dtype=torch.float32))
+        face_count_enc = self.face_count_mlp(torch.tensor(face_count.view(b, 1), dtype=torch.float32))
+        quad_ratio_enc = self.quad_ratio_mlp(torch.tensor(quad_ratio.view(b, 1), dtype=torch.float32))
 
-        face_count_enc.unsqeeze_(1)
-        quad_ratio_enc.unsqeeze_(1)
+        face_count_enc.unsqueeze_(1)
+        quad_ratio_enc.unsqueeze_(1)
 
 
         for cross_attn, norm1, cross_ffn,self_attn_blocks in self.layers:
