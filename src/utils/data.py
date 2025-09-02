@@ -1,4 +1,5 @@
 import os
+import torch
 import trimesh
 import numpy as np
 
@@ -81,3 +82,71 @@ def normalize_mesh_to_bbox(mesh: trimesh.Trimesh, box_size_dim: float = 1.0):
 def map_to_bins(points: np.array, bins: int, box_dim: float = 1.0):
     "converts float values to discrete int32 bins"
     return np.clip(np.floor((points + (box_dim / 2)) * (bins / box_dim)), 0, bins - 1)
+
+
+def get_mesh_stats(obj_file: str):
+  "Returns len(faces) & quad ratio"
+  if not os.path.exists(obj_file):
+      raise FileNotFoundError(f"File not found {obj_file}")
+  faces_count = 0
+  quad_count = 0
+  with open(obj_file, 'r') as obj:
+      for line in obj:
+          line = line.strip()
+
+          if not line or line.startswith('#'):
+              continue
+
+          parts = line.split()
+          if parts[0] == 'f':
+              faces_count += 1
+              if len(parts[1:]) == 4:
+                  quad_count += 1
+  return faces_count, (quad_count / faces_count)
+
+def get_vertices(obj_file: str):
+    if not os.path.exists(obj_file):
+      raise FileNotFoundError(f"File not found {obj_file}")
+    vertices = []
+    with open(obj_file, 'r') as obj:
+        for line in obj:
+            line = line.strip()
+
+            if not line or line.startswith('#'):
+                continue
+
+            parts  = line.split()
+
+            if parts[0] == 'v':
+                vertices.append(parts[1:])
+    return np.array(vertices)
+
+def extract_faces_bot_top(mesh: trimesh.Trimesh):
+    "Returns list of faces arranged from bottom to top"
+
+    faces = mesh.faces
+    vertices = mesh.vertices
+
+    face_data = []
+    for face in faces:
+        centroid = np.mean([vertices[i][2] for i in face])
+        face_data.append((centroid, face))
+
+    face_data.sort(key=lambda x : x[0])
+
+    return torch.tensor([face for _, face in face_data])
+
+def lex_sort_verts(face: torch.Tensor, all_vertices: torch.Tensor):
+    """lexicographically sorts vertices present in individual faces
+        Params:
+            Face (np.array): 1D list of vertices forming a single face
+            all_vertices (np.array): list of all vertices present in mesh rearranged as zyx
+    """
+    
+    face_vertices = np.array([all_vertices[vert] for vert in face])
+    
+    sorted_idx = np.lexsort((face_vertices[:, 2], face_vertices[:,1], face_vertices[:, 0]))
+    
+    return face_vertices[sorted_idx]
+
+
