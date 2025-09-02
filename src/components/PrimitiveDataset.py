@@ -8,7 +8,7 @@ import numpy as np
 from src.utils.common import get_path
 from torch.utils.data import Dataset
 from src.components.VertexTokenizer import VertexTokenizer
-from src.utils.data import load_obj, normalize_mesh_to_bbox
+from src.utils.data import load_obj, get_mesh_stats, extract_faces_bot_top, lex_sort_verts, get_vertices
 from dataclasses import dataclass
 
 @dataclass
@@ -16,9 +16,20 @@ class MeshData:
     decoder_input: torch.Tensor
     decoder_mask: torch.Tensor
     target: torch.Tensor
+    point_cloud: torch.Tensor
+    quad_ratio: float
+    face_count: int
 
 class PrimitiveDataset(Dataset):
-    def __init__(self, dataset_dir: str, seq_len: int, tokenizer: VertexTokenizer, num_points: int = 2048, num_of_bins: int = 1024, bounding_box_dim: float = 1.0):
+    def __init__(self,
+                 *,
+                  dataset_dir: str, 
+                  seq_len: int, 
+                  tokenizer: VertexTokenizer, 
+                  num_points: int = 2048, 
+                  num_of_bins: int = 1024, 
+                  bounding_box_dim: float = 1.0
+                  ):
         """
             Dataset class to handle mesh dataset.
             Parameters:
@@ -46,25 +57,32 @@ class PrimitiveDataset(Dataset):
 
     def __getitem__(self, index: int):
 
-        mesh = load_obj(self.files[index])
+        mesh = load_obj(self.files[index]) # returns triangulated mesh by default
 
-        # normalize and centralize the mesh
-        bounded_mesh = normalize_mesh_to_bbox(mesh, self.bounding_box_dim)
+        
+
+        face_count, quad_ratio = get_mesh_stats(self.files[index])
 
         #sampling points on the surface of the bounded mesh (N, 3)
-        point_cloud = bounded_mesh.sample(self.num_points)
+        point_cloud = mesh.sample(self.num_points)
+
+
+        face_list = extract_faces_bot_top(mesh)
+        vertices = torch.tensor(get_vertices(self.files[index]))
+        vertices = vertices[:, [2,1,0]]
+
+        sorted_faces_verts = torch.tensor([lex_sort_verts(face, vertices) for face in face_list])
+
+        # Flatten the (N, 3, 3) list to (N*9)
+        sequence = torch.flatten(sorted_faces_verts)
 
         #decoder input
-        dec_input = self.tokenizer.encode(np.unique(bounded_mesh.vertices, axis=0))
+        dec_input = self.tokenizer.encode(sequence)
 
-        #encoder input
-        enc_input = self.tokenizer.encode(point_cloud)
-        
         #add special tokens
-        num_enc_tokens = self.seq_len - len(enc_input) - 2
         num_dec_tokens = self.seq_len - len(dec_input) - 1
 
-        if num_dec_tokens < 0 or num_enc_tokens < 0:
+        if num_dec_tokens < 0:
             raise ValueError("Sentence is too long")
         
         decoder_input = torch.cat(
@@ -87,27 +105,13 @@ class PrimitiveDataset(Dataset):
         return MeshData(
             decoder_input=decoder_input,
             decoder_mask=(decoder_input != self.PAD).unsqueeze(0).int() & causal_mask(decoder_input.size(0)), # (1, seq_len) & (1, seq_len, seq_len),,
-            target=target
+            target=target,
+            point_cloud=point_cloud,
+            quad_ratio=quad_ratio,
+            face_count=face_count
         )
 
 def causal_mask(size):
     mask = torch.tril(torch.ones((1, size, size))).type(torch.int)
     return mask == 1
     
-
-if __name__ == '__main__':
-    
-    dataset = PrimitiveDataset(R"C:\Padhai\implementation_research_papers\meshtron\artifacts\dataset", num_points=2048, seq_len=
-                               6200)
-
-    # Test __len__
-    print("Dataset size:", len(dataset))
-
-    # Test one item
-    data = dataset[12]
-
-    print("encoder_input: ",data.encoder_input)
-    print("decoder_input: ",data.decoder_input)
-    # Check shape of points
-    print("encoder_input_shape: ",data.encoder_input.shape)
-    print("Decoder_input_shape: ", data.decoder_input.shape)
