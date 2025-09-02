@@ -39,14 +39,14 @@ class MultiHeadAttention(nn.Module):
         K = K.view(batch_size, n_k, self.heads, self.dim_k).transpose(1,2)
         V = V.view(batch_size, n_k, self.heads, self.dim_k).transpose(1,2)
 
-        attention_scores = (Q @ K.transpose(-2, -1)) * (math.sqrt(self.d_k))
+        attention_scores = torch.bmm(Q , K.transpose(-2, -1)) * (math.sqrt(self.d_k))
         
         if mask is not None:
             attention_scores = attention_scores.masked_fill(mask == 0, -1e9)
         
         attention_weights = self.dropout(F.softmax(attention_scores, dim = -1))
 
-        out = attention_weights @ V
+        out = torch.bmm(attention_weights, V)
 
         out = out.transpose(1,2).contiguous().view(batch_size, seq_len, dim)
 
@@ -95,7 +95,7 @@ class SlidingWindowAttention(nn.Module):
             k_i = k[:, :, start:end, :]
             v_i = v[:, :, start:end, :]
 
-            attention_scores = (q_i @ (k_i.transpose(-2,-1))) * math.sqrt(self.dim_k)
+            attention_scores = torch.bmm(q_i , (k_i.transpose(-2,-1))) * math.sqrt(self.dim_k)
 
             if mask:
                 mask_window = mask[:, start:end].unsqueeze(1).unsqueeze(1)
@@ -103,7 +103,7 @@ class SlidingWindowAttention(nn.Module):
 
             attention_scores = F.softmax(attention_scores, dim=-1)
 
-            out_i = attention_scores @ v_i
+            out_i = torch.bmm(attention_scores , v_i)
             out.append(out_i)
         
         out = torch.cat(out, dim=2)
