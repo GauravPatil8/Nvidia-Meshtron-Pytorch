@@ -15,26 +15,16 @@ class VertexTokenizer:
 
         self.vocab_size = bins + 3
 
-    def quantize(self, points: np.array):
+    def quantize(self, sequence: np.array):
         "converts float values to discrete int bins"
-        return torch.tensor(np.clip(np.floor((points + (self.box_dim / 2)) * (self.bins / self.box_dim)), 0, self.bins - 1)).to(dtype=torch.int64)
+        return torch.tensor(np.clip(np.floor((sequence + (self.box_dim / 2)) * (self.bins / self.box_dim)), 0, self.bins - 1)).to(dtype=torch.int64)
 
     def dequantize(self, tokens: torch.Tensor):
         "converts int bins to float values"
         return (tokens.float() / (self.bins - 1)) * self.box_dim - (self.box_dim / 2)
     
-    def encode(self, points: np.array):
+    def encode(self, sequence: torch.Tensor):
 
-        #Rearrange xyz to yzx as mentioned in the paper
-        points = points[:, [1,2,0]]
-
-        #lexsort y->z->x
-        sorted_idx = np.lexsort([points[:, 2], points[:, 1], points[:,0]])
-        points = points[sorted_idx]
-
-        #flatten the (N,3) array to (n*3) array
-        points = points.flatten()
-
-        tokens = self.quantize(points)
+        tokens = self.quantize(sequence)
 
         return tokens
