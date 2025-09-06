@@ -1,7 +1,7 @@
 import os
 from tqdm import tqdm
 from utils.common import get_path
-from utils.data import apply_random_transformations, save_obj, load_obj, normalize_mesh_to_bbox
+from utils.data import save_obj, load_obj, random_transform
 
 class Ingestion:
     def __init__(self, len_dataset: int, mesh_dir: str, dataset_dir: str, bounding_box_int: int):
@@ -30,11 +30,10 @@ class Ingestion:
         for mesh_path in tqdm(self.meshes, desc='Meshes'):
             dir_name = os.path.splitext(os.path.basename(mesh_path))[0]
             dir_path = get_path(self.dataset, dir_name)
-            mesh = load_obj(mesh_path).copy()
+            vertices, faces, header = load_obj(mesh_path)
 
             for index in tqdm(range(instances_per_mesh), desc=f"Instances for {dir_name}", leave=False):
-                apply_random_transformations(mesh)
-                # normalize and centralize the mesh
-                bounded_mesh = normalize_mesh_to_bbox(mesh, self.bounding_box_dim)
-                save_obj(bounded_mesh, dir_path, index+1) #obj staring from index 1 [cube\1.obj, cube\2.obj]
+                transformed_vertices = random_transform(vertices)
+
+                save_obj(get_path(dir_path, f"{index+1}.obj"), transformed_vertices, faces, header) #obj staring from index 1 [cube\1.obj, cube\2.obj]
                 

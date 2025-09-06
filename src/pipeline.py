@@ -8,7 +8,7 @@ class Pipeline:
 
         #Ingestion stage
         ing_config = ConfigurationManager.ingestion_config()
-        ingestion_stage = Ingestion(len(os.listdir(ing_config.meshes)) * 1000, ing_config.meshes, ing_config.dataset)
+        ingestion_stage = Ingestion(ing_config.dataset_len, ing_config.meshes, ing_config.dataset_storage_dir, 1)
         self._stages.append(ingestion_stage)
 
     def run(self):
