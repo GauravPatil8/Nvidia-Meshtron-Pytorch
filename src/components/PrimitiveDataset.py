@@ -4,12 +4,13 @@ import sys
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
 import torch
+import trimesh
 import numpy as np
-from src.utils.common import get_path
-from torch.utils.data import Dataset
-from src.components.VertexTokenizer import VertexTokenizer
-from src.utils.data import load_obj, get_mesh_stats, extract_faces_bot_top, lex_sort_verts, get_vertices
 from dataclasses import dataclass
+from torch.utils.data import Dataset
+from src.utils.common import get_path
+from src.components.VertexTokenizer import VertexTokenizer
+from src.utils.data import get_mesh_stats, get_max_seq_len, normalize_mesh_to_bbox
 
 @dataclass
 class MeshData:
@@ -24,9 +25,9 @@ class PrimitiveDataset(Dataset):
     def __init__(self,
                  *,
                   dataset_dir: str, 
-                  seq_len: int, 
+                  original_mesh_dir: str,
                   tokenizer: VertexTokenizer, 
-                  num_points: int = 2048, 
+                  point_cloud_size: int = 2048, 
                   num_of_bins: int = 1024, 
                   bounding_box_dim: float = 1.0
                   ):
@@ -34,7 +35,7 @@ class PrimitiveDataset(Dataset):
             Dataset class to handle mesh dataset.
             Parameters:
                 dataset_dir = location of stored data.
-                num_points = number of points to sample on the mesh
+                point_cloud_size = number of points to sample on the mesh
                 num_of_bins = number of bins to map the values
                 bounding_box_dim = length of ont side of box
         """
@@ -42,8 +43,8 @@ class PrimitiveDataset(Dataset):
             self.data_dir = dataset_dir
         else:
             raise FileNotFoundError(f"Dataset directory not found: {dataset_dir}")
-        self.seq_len = seq_len
-        self.num_points = num_points
+        self.max_seq_len = get_max_seq_len(original_mesh_dir)
+        self.num_points = point_cloud_size
         self.num_of_bins = num_of_bins
         self.bounding_box_dim = bounding_box_dim
         self.files = [get_path(root, file) for root, _ , files in os.walk(dataset_dir) for file in files]
@@ -57,39 +58,32 @@ class PrimitiveDataset(Dataset):
 
     def __getitem__(self, index: int):
 
-        mesh = load_obj(self.files[index]) # returns triangulated mesh by default
-
-        
-
+        #get the stats before triangulation and normalization
         face_count, quad_ratio = get_mesh_stats(self.files[index])
+
+        mesh = trimesh.load_mesh(self.files[index])# returns triangulated mesh by default
+        
+        vertices = normalize_mesh_to_bbox(self.files[index], self.bounding_box_dim)
+
+        mesh.vertices = vertices
 
         #sampling points on the surface of the bounded mesh (N, 3)
         point_cloud = mesh.sample(self.num_points)
 
-
-        face_list = extract_faces_bot_top(mesh)
-        vertices = torch.tensor(get_vertices(self.files[index]))
-        vertices = vertices[:, [2,1,0]]
-
-        sorted_faces_verts = torch.tensor([lex_sort_verts(face, vertices) for face in face_list])
-
-        # Flatten the (N, 3, 3) list to (N*9)
-        sequence = torch.flatten(sorted_faces_verts)
-
         #decoder input
-        dec_input = self.tokenizer.encode(sequence)
+        dec_input = self.tokenizer.encode(mesh, vertices)
 
         #add special tokens
-        num_dec_tokens = self.seq_len - len(dec_input) - 1
+        num_dec_tokens = self.max_seq_len - len(dec_input) - 9
 
         if num_dec_tokens < 0:
             raise ValueError("Sentence is too long")
         
         decoder_input = torch.cat(
             [
-                self.SOS,
+                torch.tensor([self.SOS] * 9, dtype=torch.int32), #for preserving hourglass structure
                 dec_input,
-                torch.tensor([self.PAD] * num_dec_tokens, dtype=torch.int64)
+                torch.tensor([self.PAD] * num_dec_tokens, dtype=torch.int32)
             ],
             dim=0
         )
@@ -97,8 +91,8 @@ class PrimitiveDataset(Dataset):
         target = torch.cat(
             [
                 dec_input,
-                self.EOS,
-                torch.tensor([self.PAD] * num_dec_tokens, dtype=torch.int64)
+                torch.tensor([self.EOS] * 9, dtype=torch.int32), #for preserving hourglass structure
+                torch.tensor([self.PAD] * num_dec_tokens, dtype=torch.int32)
             ],
             dim=0
         )
@@ -115,3 +109,31 @@ def causal_mask(size):
     mask = torch.tril(torch.ones((1, size, size))).type(torch.int)
     return mask == 1
     
+# if __name__ == '__main__':
+
+#     dataset = PrimitiveDataset(
+#         dataset_dir=R"C:\Padhai\implementation_research_papers\meshtron\artifacts\dataset",
+#         original_mesh_dir=R"C:\Padhai\implementation_research_papers\meshtron\mesh",
+#         tokenizer=VertexTokenizer(1024, 1.0),
+#         point_cloud_size= 2048,
+#         num_of_bins=1024,
+#         bounding_box_dim=1.0,
+#     )
+
+#     data1 = dataset[13]
+#     print("-"*100)
+
+#     print(data1)
+#     print("-"*100)
+
+#     print(f"Quad ratio : {data1.quad_ratio}")
+#     print(f"Face count: {data1.face_count}")
+#     print("-"*100)
+
+#     print(f"Point cloud : {data1.point_cloud[:10, :]}")
+#     print("-"*100)
+#     print(f"Decoder input : {data1.decoder_input[10:90]}")
+#     print("-"*100)
+#     print(f"Decoder mask size: {data1.decoder_mask.size()}")
+#     print("-"*100)
+#     print(f"Decoder Target size: {data1.target.size()}")
