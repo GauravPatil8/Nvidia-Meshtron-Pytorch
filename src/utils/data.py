@@ -1,57 +1,76 @@
 import os
 import torch
+import random
 import trimesh
 import numpy as np
 
-def load_obj(mesh_path: str) -> trimesh.Trimesh:
-    mesh = trimesh.load_mesh(mesh_path, file_type = 'obj')
-    return mesh
+def load_obj(filepath):
+    """Load vertices and faces from an OBJ file."""
+    vertices = []
+    faces = []
+    header = []
 
-def save_obj(mesh: trimesh.Trimesh, dir_path: str, index: int):
-    os.makedirs(dir_path, exist_ok=True)
-    mesh.export(os.path.join(dir_path, f"{index}.obj"))
+    with open(filepath, "r") as f:
+        for line in f:
+            if line.startswith("v "):  # vertex
+                parts = line.strip().split()
+                vertex = list(map(float, parts[1:4]))
+                vertices.append(vertex)
+            elif line.startswith("f "):  # face
+                parts = line.strip().split()
+                face = [int(p.split("/")[0]) for p in parts[1:]]
+                faces.append(face)
+            else:
+                header.append(line.strip())  # keep comments, object names, etc.
+    return np.array(vertices), faces, header
 
-def apply_random_rotation(mesh: trimesh.Trimesh, max_angle_degree: int = 180) -> None:
-    "Applies Random Euler rotation to the mesh"
+def random_transform(vertices):
+    """Apply random rotation + independent scaling to vertices."""
+    # Random independent scaling factors for x, y, z
+    scales = np.random.uniform(0.5, 2.0, size=3)
+    S = np.diag(scales)
 
-    euler_x = np.random.uniform(-max_angle_degree, max_angle_degree)
-    euler_y = np.random.uniform(-max_angle_degree, max_angle_degree)
-    euler_z = np.random.uniform(-max_angle_degree, max_angle_degree)
+    # Random rotation angles
+    angles = np.radians(np.random.uniform(0, 360, size=3))
+    cx, cy, cz = np.cos(angles)
+    sx, sy, sz = np.sin(angles)
 
-    mesh.apply_transform(trimesh.transformations.rotation_matrix(euler_x, [1,0,0]))
-    mesh.apply_transform(trimesh.transformations.rotation_matrix(euler_y, [0,1,0]))
-    mesh.apply_transform(trimesh.transformations.rotation_matrix(euler_z, [0,0,1]))
+    # Rotation matrices
+    Rx = np.array([[1, 0, 0],
+                   [0, cx, -sx],
+                   [0, sx, cx]])
 
-def apply_random_scale(mesh: trimesh.Trimesh, scale_ranges: dict = None) -> None:
-    """
-        Applies random scaling on each axis
+    Ry = np.array([[cy, 0, sy],
+                   [0, 1, 0],
+                   [-sy, 0, cy]])
 
-        Parameters:
-            mesh: trimesh.Trimesh object
-            scale_ranges: dict with 'x', 'y', 'z' keys containing (min, max) tuples
-    
-    """
+    Rz = np.array([[cz, -sz, 0],
+                   [sz, cz, 0],
+                   [0, 0, 1]])
 
-    if scale_ranges is None:
-        scale_ranges = {
-            'x': (0.5, 2.0),
-            'y': (0.3, 1.5),
-            'z': (0.2, 3.0)
-        }
-    
-    scale_x = np.random.uniform(*scale_ranges['x'])
-    scale_y = np.random.uniform(*scale_ranges['y'])
-    scale_z = np.random.uniform(*scale_ranges['z'])
+    # Combined rotation
+    R = Rz @ Ry @ Rx
 
-    mesh.apply_scale([scale_x, scale_y, scale_z])
+    # Apply scaling first, then rotation
+    transformed = vertices @ S @ R.T
 
-def apply_random_transformations(mesh: trimesh.Trimesh, max_angle_degree: int = 180, scale_ranges: dict = None) -> None:
-    "Applies random rotation and scaling for each axis"
+    return transformed
 
-    apply_random_rotation(mesh, max_angle_degree)
-    apply_random_scale(mesh, scale_ranges)
+def save_obj(filepath, vertices, faces, header):
+    """Save vertices and faces back into an OBJ file."""
+    if not os.path.exists(os.path.dirname(filepath)):
+        os.makedirs(os.path.dirname(filepath))
 
-def normalize_mesh_to_bbox(mesh: trimesh.Trimesh, box_size_dim: float = 1.0):
+    with open(filepath, "w") as f:
+        for line in header:
+            f.write(line + "\n")
+        for v in vertices:
+            f.write(f"v {v[0]:.6f} {v[1]:.6f} {v[2]:.6f}\n")
+        f.write("s 0\n")
+        for face in faces:
+            f.write("f " + " ".join(str(idx) for idx in face) + "\n")
+
+def normalize_mesh_to_bbox(file_path: str,box_size_dim: float = 1.0):
     """
     Normalize a mesh so that it fits inside a cube bounding box of size `box_size_dim`.
 
@@ -59,25 +78,18 @@ def normalize_mesh_to_bbox(mesh: trimesh.Trimesh, box_size_dim: float = 1.0):
         mesh (trimesh.Trimesh): Input mesh
         box_size_dim (float): Target cube side length
     """
-    vertices = mesh.vertices
 
-    # current bounding box
+    vertices = get_vertices(file_path)
     min_coord = np.min(vertices, axis=0)
     max_coord = np.max(vertices, axis=0)
-    current_size = max_coord - min_coord
+  
+    dimension = max_coord - min_coord
+    
+    scale = box_size_dim / np.max(dimension)
 
-    # avoid divide by zero
-    current_size[current_size == 0] = 1e-9  
+    vertices *= scale
 
-    # uniform scaling factor
-    scale_factor = (box_size_dim / np.max(current_size))
-
-    # scale around the center of bbox
-    center = (min_coord + max_coord) / 2.0
-    normalized_vertices = (vertices - center) * scale_factor
-
-    mesh.vertices = normalized_vertices
-    return mesh
+    return torch.from_numpy(vertices)
 
 def map_to_bins(points: np.array, bins: int, box_dim: float = 1.0):
     "converts float values to discrete int32 bins"
@@ -119,7 +131,7 @@ def get_vertices(obj_file: str):
 
             if parts[0] == 'v':
                 vertices.append(parts[1:])
-    return np.array(vertices)
+    return np.array(vertices, dtype=float)
 
 def extract_faces_bot_top(mesh: trimesh.Trimesh):
     "Returns list of faces arranged from bottom to top"
@@ -133,8 +145,9 @@ def extract_faces_bot_top(mesh: trimesh.Trimesh):
         face_data.append((centroid, face))
 
     face_data.sort(key=lambda x : x[0])
-
-    return torch.tensor([face for _, face in face_data])
+    faces = np.array([face for _, face in face_data])
+    faces = torch.from_numpy(faces)
+    return faces
 
 def lex_sort_verts(face: torch.Tensor, all_vertices: torch.Tensor):
     """lexicographically sorts vertices present in individual faces
@@ -149,4 +162,10 @@ def lex_sort_verts(face: torch.Tensor, all_vertices: torch.Tensor):
     
     return face_vertices[sorted_idx]
 
-
+def get_max_seq_len(data_dir: str):
+    "Returns the max seq len the model will recieve"
+    max_seq_len = float('-inf')
+    for file in os.listdir(data_dir):
+        mesh = trimesh.load(os.path.join(data_dir, file), file_type='obj')
+        max_seq_len = max(max_seq_len, (len(mesh.faces) * 9)) # mesh.faces returns triangular faces
+    return int(max_seq_len)
