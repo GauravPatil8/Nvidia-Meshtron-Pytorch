@@ -7,19 +7,11 @@ import torch
 import trimesh
 import numpy as np
 from dataclasses import dataclass
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, DataLoader, random_split
 from src.utils.common import get_path
 from src.components.VertexTokenizer import VertexTokenizer
 from src.utils.data import get_mesh_stats, get_max_seq_len, normalize_mesh_to_bbox
-
-@dataclass
-class MeshData:
-    decoder_input: torch.Tensor
-    decoder_mask: torch.Tensor
-    target: torch.Tensor
-    point_cloud: torch.Tensor
-    quad_ratio: float
-    face_count: int
+from src.config_entities import DatasetConfig, DataLoaderConfig
 
 class PrimitiveDataset(Dataset):
     def __init__(self,
@@ -73,10 +65,17 @@ class PrimitiveDataset(Dataset):
         #decoder input
         dec_input = self.tokenizer.encode(mesh, vertices)
 
+        print(len(dec_input))
         #add special tokens
-        num_dec_tokens = self.max_seq_len - len(dec_input) - 9
+        num_dec_tokens = 0
+        # if self.max_seq_len != len(dec_input):
+        #     print(f"file {self.files[index]}")
+        num_dec_tokens = self.max_seq_len - len(dec_input) 
 
         if num_dec_tokens < 0:
+            print(f"[ERROR] File: {self.files[index]}")
+            print(f"Max seq len allowed: {self.max_seq_len}")
+            print(f"Got length: {len(dec_input)}") 
             raise ValueError("Sentence is too long")
         
         decoder_input = torch.cat(
@@ -96,44 +95,52 @@ class PrimitiveDataset(Dataset):
             ],
             dim=0
         )
-        return MeshData(
-            decoder_input=decoder_input,
-            decoder_mask=(decoder_input != self.PAD).unsqueeze(0).int() & causal_mask(decoder_input.size(0)), # (1, seq_len) & (1, seq_len, seq_len),,
-            target=target,
-            point_cloud=point_cloud,
-            quad_ratio=quad_ratio,
-            face_count=face_count
-        )
+        return {
+            "decoder_input":decoder_input,
+            "decoder_mask":(decoder_input != self.PAD).unsqueeze(0).int() & causal_mask(decoder_input.size(0)), # (1, seq_len) & (1, seq_len, seq_len),,
+            "target":target,
+            "point_cloud":torch.from_numpy(point_cloud).to(dtype=torch.float32),
+            "quad_ratio":torch.tensor(quad_ratio, dtype=torch.float32),
+            "face_count":torch.tensor(face_count, dtype=torch.float32),
+        }
+
 
 def causal_mask(size):
     mask = torch.tril(torch.ones((1, size, size))).type(torch.int)
     return mask == 1
-    
-# if __name__ == '__main__':
 
-#     dataset = PrimitiveDataset(
-#         dataset_dir=R"C:\Padhai\implementation_research_papers\meshtron\artifacts\dataset",
-#         original_mesh_dir=R"C:\Padhai\implementation_research_papers\meshtron\mesh",
-#         tokenizer=VertexTokenizer(1024, 1.0),
-#         point_cloud_size= 2048,
-#         num_of_bins=1024,
-#         bounding_box_dim=1.0,
-#     )
 
-#     data1 = dataset[13]
-#     print("-"*100)
+def get_dataloaders(dataset_config: DatasetConfig, loader_config: DataLoaderConfig):
+    """Returns Train and test split dataloaders and VertexTokenizer"""
+    vertex_tokenizer = VertexTokenizer(dataset_config.num_of_bins, dataset_config.bounding_box_dim)
+    dataset = PrimitiveDataset(
+        dataset_dir=dataset_config.dataset_dir,
+        original_mesh_dir=dataset_config.original_mesh_dir,
+        tokenizer=vertex_tokenizer,
+        point_cloud_size=dataset_config.point_cloud_size,
+        num_of_bins=dataset_config.num_of_bins,
+        bounding_box_dim=dataset_config.bounding_box_dim
+    )
 
-#     print(data1)
-#     print("-"*100)
+    dataset_size = len(dataset)
+    train_size = int(dataset_size * loader_config.train_ratio)
+    test_size = dataset_size - train_size
+    train_dataset, test_dataset = random_split(dataset, [train_size, test_size])
 
-#     print(f"Quad ratio : {data1.quad_ratio}")
-#     print(f"Face count: {data1.face_count}")
-#     print("-"*100)
+    train_loader = DataLoader(
+        dataset=train_dataset,
+        batch_size=loader_config.batch_size,
+        shuffle=loader_config.shuffle,
+        num_workers=loader_config.num_workers,
+        pin_memory=loader_config.pin_memory
+    )
 
-#     print(f"Point cloud : {data1.point_cloud[:10, :]}")
-#     print("-"*100)
-#     print(f"Decoder input : {data1.decoder_input[10:90]}")
-#     print("-"*100)
-#     print(f"Decoder mask size: {data1.decoder_mask.size()}")
-#     print("-"*100)
-#     print(f"Decoder Target size: {data1.target.size()}")
+    test_loader = DataLoader(
+        dataset=test_dataset,
+        batch_size=loader_config.batch_size,
+        shuffle=loader_config.shuffle,
+        num_workers=loader_config.num_workers,
+        pin_memory=loader_config.pin_memory
+    )
+
+    return train_loader, test_loader, vertex_tokenizer
