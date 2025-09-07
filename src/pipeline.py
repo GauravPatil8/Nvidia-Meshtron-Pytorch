@@ -1,5 +1,6 @@
 import os
 from stages.ingestion import Ingestion
+from stages.training import Trainer
 from config import ConfigurationManager
 
 class Pipeline:
@@ -7,15 +8,19 @@ class Pipeline:
         self._stages = []
 
         #Ingestion stage
-        ing_config = ConfigurationManager.ingestion_config()
-        ingestion_stage = Ingestion(ing_config.dataset_len, ing_config.meshes, ing_config.dataset_storage_dir, 1)
+        ingestion_stage = Ingestion(ConfigurationManager.ingestion_config())
         self._stages.append(ingestion_stage)
+
+        #Training stage
+        training_stage = Trainer(ConfigurationManager.trainig_config(),
+                                 ConfigurationManager.model_params(),
+                                 ConfigurationManager.dataloader_config(),
+                                 ConfigurationManager.dataloader_config())
+        self._stages.append(training_stage)
 
     def run(self):
         for stage in self._stages:
             stage.run()
             
-if __name__ == '__main__':
-    pipeline = Pipeline()
-    pipeline.run()
+
 
