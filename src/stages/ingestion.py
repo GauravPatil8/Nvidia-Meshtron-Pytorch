@@ -1,10 +1,11 @@
 import os
 from tqdm import tqdm
-from utils.common import get_path
-from utils.data import save_obj, load_obj, random_transform
+from src.utils.common import get_path
+from src.utils.data import save_obj, load_obj, random_transform
+from src.config_entities import IngestionConfig
 
 class Ingestion:
-    def __init__(self, len_dataset: int, mesh_dir: str, dataset_dir: str, bounding_box_int: int):
+    def __init__(self, config: IngestionConfig):
         """ 
             Initializes Ingestion stage
 
@@ -13,10 +14,9 @@ class Ingestion:
                 mesh_dir (str): Path of the folder where primitive meshes are stored.
                 dataset_dir (str): Path of the folder where the transformed meshes will be stored for training.
         """
-        self.len_dataset = len_dataset
-        self.mesh_dir = mesh_dir
-        self.dataset = dataset_dir
-        self.bounding_box_dim = bounding_box_int
+        self.len_dataset = config.dataset_len
+        self.mesh_dir = config.meshes
+        self.dataset = config.dataset_storage_dir
 
     def run(self):
         #list of paths of all meshes
