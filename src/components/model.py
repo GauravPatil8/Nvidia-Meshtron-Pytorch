@@ -11,7 +11,7 @@ from src.components.HourglassTransformer import (
     build_hourglass_valley,
     SwiGLU
 )
-
+from src.config_entities import ModelParams
 
 class Meshtron(nn.Module):
     """
@@ -47,7 +47,7 @@ class Meshtron(nn.Module):
     def __init__(self,
                  *,
                  dim: int,
-                 vocab_size: int,
+                 embedding_size: int,
                  n_heads: int,
                  attn_window_size: int,
                  d_ff: int,
@@ -66,7 +66,7 @@ class Meshtron(nn.Module):
             Initialize Meshtron Model
             Args:
                 dim (int): Primary embedding dimension for the model's hidden states.
-                vocab_size (int): Size of the vocabulary for quantized coordinate tokens (typically 1024).
+                embedding_size (int): number of the rows for quantized coordinate tokens and special tokens (typically 1024 + 2 or 128 + 2).
                 n_heads (int): Number of attention heads in the main transformer layers.
                 attn_window_size (int): Size of the sliding attention window for local attention mechanisms.
                 d_ff (int): Hidden dimension of the feed-forward networks.
@@ -87,7 +87,7 @@ class Meshtron(nn.Module):
         shortening_factor, num_blocks, n_pre_post_blocks = parse_hierarchy(hierarchy=hierarchy)
         self.sf = shortening_factor
         self.n_blocks = num_blocks
-        self.embedding = InputEmbedding(vocab_size, dim)
+        self.embedding = InputEmbedding(embedding_size, dim)
         self.up_sample = LinearUpSample(shortening_factor)
         self.use_conditioning = use_conditioning
 
@@ -115,7 +115,7 @@ class Meshtron(nn.Module):
             dim,
             n_heads,
             attn_window_size,
-            vocab_size,
+            embedding_size,
             self.sf,
             self.n_blocks,
             d_ff,
@@ -133,7 +133,7 @@ class Meshtron(nn.Module):
             ) for i in range(n_pre_post_blocks)
         ])
 
-        self.out_proj = ProjectionLayer(dim, vocab_size)
+        self.out_proj = ProjectionLayer(dim, embedding_size)
 
     def forward(self, x, conditioning_data, face_count, quad_ratio, mask):
 
@@ -175,3 +175,22 @@ class Meshtron(nn.Module):
             x = run_block(block)
         
         return self.out_proj(x)
+    
+def build_model(model_params: ModelParams):
+    return Meshtron(
+            dim = model_params.dim,
+            embedding_size= model_params.embedding_size,
+            n_heads= model_params.n_heads,
+            attn_window_size= model_params.attn_window_size,
+            d_ff= model_params.d_ff,
+            hierarchy= model_params.hierarchy,
+            dropout= model_params.dropout,
+            use_conditioning= model_params.use_conditioning,
+            con_num_latents= model_params.con_num_latents,
+            con_latent_dim= model_params.con_latent_dim,
+            con_dim_ffn= model_params.con_dim_ffn,
+            con_num_blocks= model_params.con_num_blocks,
+            con_n_attn_heads= model_params.con_n_attn_heads,
+            con_num_self_attention_blocks= model_params.con_num_self_attention_blocks,
+            condition_every_n_layers= model_params.condition_every_n_layers
+        )
