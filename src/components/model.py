@@ -1,5 +1,6 @@
+import torch
 import torch.nn as nn
-from src.components.Attention import MultiHeadAttention
+from src.components.Attention import MultiHeadFlashAttention
 from src.components.PerceiverEncoder import ConditioningEncoder
 from src.components.HourglassTransformer import (
     Transformer,
@@ -11,7 +12,10 @@ from src.components.HourglassTransformer import (
     build_hourglass_valley,
     SwiGLU
 )
+from src.components.PositionalEncoding import RoPEncoding
 from src.config_entities import ModelParams
+from src.components.VertexTokenizer import VertexTokenizer
+
 
 class Meshtron(nn.Module):
     """
@@ -49,10 +53,12 @@ class Meshtron(nn.Module):
                  dim: int,
                  embedding_size: int,
                  n_heads: int,
-                 attn_window_size: int,
+                 block_size: int,
                  d_ff: int,
                  hierarchy: str,
                  dropout: float,
+                 seq_len: int,
+                 tokenizer: VertexTokenizer,
                  use_conditioning: bool,
                  con_num_latents:int,
                  con_latent_dim:int,
@@ -89,22 +95,24 @@ class Meshtron(nn.Module):
         self.n_blocks = num_blocks
         self.embedding = InputEmbedding(embedding_size, dim)
         self.up_sample = LinearUpSample(shortening_factor)
+        self.pos_emb = RoPEncoding(dim=dim, seq_len=seq_len)
         self.use_conditioning = use_conditioning
-
+        self.tokenizer = tokenizer
         self.point_cloud_conditioning = ConditioningEncoder(
             num_latents=con_num_latents,
             latent_dim=con_latent_dim,
             dim_ffn=con_dim_ffn,
             num_blocks=con_num_blocks,
             heads=con_n_attn_heads,
-            num_self_attention=con_num_self_attention_blocks
+            num_self_attention=con_num_self_attention_blocks,
+            attn_block_size=block_size
         )
 
         self.pre_blocks = nn.ModuleList([
             Transformer(
                 dim,
                 dropout,
-                MultiHeadAttention(dim, n_heads, dropout, rope_flag=True),
+                MultiHeadFlashAttention(dim, n_heads, dropout, False, block_size),
                 FeedForwardNetwork(dim, d_ff, dropout, SwiGLU),
                 conditioning_flag= use_conditioning and (i % condition_every_n_layers == 0)
             )
@@ -114,7 +122,7 @@ class Meshtron(nn.Module):
         self.down_valley, self.center_layer, self.up_valley = build_hourglass_valley(
             dim,
             n_heads,
-            attn_window_size,
+            block_size,
             embedding_size,
             self.sf,
             self.n_blocks,
@@ -127,7 +135,7 @@ class Meshtron(nn.Module):
         self.post_block = nn.ModuleList([
             Transformer(dim, 
                         dropout, 
-                        MultiHeadAttention(dim, n_heads, dropout, rope_flag=True), 
+                        MultiHeadFlashAttention(dim, n_heads, dropout, False, block_size),
                         FeedForwardNetwork(dim, d_ff, dropout, SwiGLU),
                         conditioning_flag= use_conditioning and (i % condition_every_n_layers == 0)
             ) for i in range(n_pre_post_blocks)
@@ -144,6 +152,13 @@ class Meshtron(nn.Module):
         
         skips = [] #holds skip connection values, used in upsampling
         x = self.embedding(x)
+        x = self.pos_emb(x)
+
+        # (B, N, 3) -> (B, N*3) and quantize into discrete bins
+        conditioning_data = self.tokenizer.quantize(torch.flatten(conditioning_data))
+
+        #(B, N*3) -> (B, N*3, dim)
+        conditioning_data = self.embedding(conditioning_data)
 
         #conditioning tensor
         cond= None
@@ -174,17 +189,22 @@ class Meshtron(nn.Module):
         for block in self.post_blocks:
             x = run_block(block)
         
+        return x
+        
+    def project(self, x: torch.Tensor):
         return self.out_proj(x)
-    
-def build_model(model_params: ModelParams):
+
+def get_model(model_params: ModelParams):
     return Meshtron(
             dim = model_params.dim,
             embedding_size= model_params.embedding_size,
             n_heads= model_params.n_heads,
-            attn_window_size= model_params.attn_window_size,
+            block_size= model_params.block_size,
             d_ff= model_params.d_ff,
             hierarchy= model_params.hierarchy,
             dropout= model_params.dropout,
+            seq_len=model_params.seq_len,
+            tokenizer = model_params.tokenizer,
             use_conditioning= model_params.use_conditioning,
             con_num_latents= model_params.con_num_latents,
             con_latent_dim= model_params.con_latent_dim,
