@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+from src.utils.data import get_max_seq_len
 from src.utils.common import get_path, get_root_folder
 from src.config_entities import IngestionConfig, ModelParams, TrainingConfig, DatasetConfig,DataLoaderConfig
 
@@ -16,7 +17,7 @@ class ConfigurationManager:
         )
     
     @staticmethod
-    def trainig_config():
+    def training_config():
         PROJECT_ROOT = get_root_folder()
         return TrainingConfig(
             learning_rate=0.01,
@@ -28,14 +29,17 @@ class ConfigurationManager:
     
     @staticmethod
     def model_params():
+        PROJECT_ROOT = get_root_folder()
         return ModelParams(
-            dim = 12000,
-            embedding_size = 130, # 128 + 2,
+            dim = 512,
+            embedding_size = 130, # 0-127(bins) + 128-130 special tokens,
             n_heads = 64,
-            attn_window_size=3,
+            block_size=3,
             d_ff=512,
-            hierarchy="1@2 2@4 4@2 2@4 1@2",
+            hierarchy="12@3 8@6 8@9 8@6 12@3",
             dropout = 0.3,
+            seq_len = get_max_seq_len(get_path(PROJECT_ROOT, 'artifacts', 'dataset')),
+            tokenizer=None,
             use_conditioning = True,
             con_num_latents= 1024,
             con_latent_dim=512,

@@ -20,10 +20,12 @@ class ModelParams:
     dim: int
     embedding_size: int
     n_heads: int
-    attn_window_size: int
+    block_size: int
     d_ff: int
     hierarchy: str
     dropout: float
+    seq_len: int
+    tokenizer: any
     use_conditioning: bool
     con_num_latents:int
     con_latent_dim:int
