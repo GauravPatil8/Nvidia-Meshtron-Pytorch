@@ -1,9 +1,9 @@
 import os
+import logging
 from tqdm import tqdm
 from src.utils.common import get_path
 from src.utils.data import save_obj, load_obj, random_transform
 from src.config_entities import IngestionConfig
-
 class Ingestion:
     def __init__(self, config: IngestionConfig):
         """ 
@@ -17,8 +17,11 @@ class Ingestion:
         self.len_dataset = config.dataset_len
         self.mesh_dir = config.meshes
         self.dataset = config.dataset_storage_dir
+        self.exists = True if os.path.exists(config.dataset_storage_dir) else False
 
     def run(self):
+        logger = logging.getLogger(__file__)
+
         #list of paths of all meshes
         self.meshes = [get_path(self.mesh_dir, path) for path in os.listdir(self.mesh_dir)]
 
@@ -27,13 +30,21 @@ class Ingestion:
 
         instances_per_mesh = self.len_dataset // len(self.meshes)
 
-        for mesh_path in tqdm(self.meshes, desc='Meshes'):
-            dir_name = os.path.splitext(os.path.basename(mesh_path))[0]
-            dir_path = get_path(self.dataset, dir_name)
-            vertices, faces, header = load_obj(mesh_path)
+        if not self.exists:
+            logger.info(f"Creating dataset at : {self.dataset}")
+            try:
+                for mesh_path in tqdm(self.meshes, desc='Meshes'):
+                    dir_name = os.path.splitext(os.path.basename(mesh_path))[0]
+                    dir_path = get_path(self.dataset, dir_name)
+                    vertices, faces, header = load_obj(mesh_path)
 
-            for index in tqdm(range(instances_per_mesh), desc=f"Instances for {dir_name}", leave=False):
-                transformed_vertices = random_transform(vertices)
+                    for index in tqdm(range(instances_per_mesh), desc=f"Instances for {dir_name}", leave=False):
+                        transformed_vertices = random_transform(vertices)
 
-                save_obj(get_path(dir_path, f"{index+1}.obj"), transformed_vertices, faces, header) #obj staring from index 1 [cube\1.obj, cube\2.obj]
+                        save_obj(get_path(dir_path, f"{index+1}.obj"), transformed_vertices, faces, header) #obj staring from index 1 [cube\1.obj, cube\2.obj]
+            except Exception as e:
+                logger.info(f"An unexpected error occured during ingestion: {e}")
+
+        else:
+            logger.info(f"Dataset already exists, skipping this stage")
                 
