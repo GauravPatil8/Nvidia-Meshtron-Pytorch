@@ -168,4 +168,8 @@ def get_max_seq_len(data_dir: str):
     for file in os.listdir(data_dir):
         mesh = trimesh.load(os.path.join(data_dir, file), file_type='obj')
         max_seq_len = max(max_seq_len, (len(mesh.faces) * 9)) # mesh.faces returns triangular faces
-    return int(max_seq_len)
+    return int(max_seq_len + 9) # adding 9 as for preserving hourglass structure we are adding 9 special tokens (<sos> or <eos>)
+
+def add_gaussian_noise(x:torch.Tensor, mean:float, std: float):
+    noise = torch.normal(mean=mean, std=std, size=x.shape, device=x.device)
+    return x + noise
