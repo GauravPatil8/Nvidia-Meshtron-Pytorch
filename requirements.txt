@@ -1,0 +1,4 @@
+torch==2.7.1
+trimesh==4.6.8
+tqdm==4.67.1
+numpy==2.0.1
