@@ -2,7 +2,7 @@ import torch
 import math
 import torch.nn as nn
 import torch.nn.functional as F
-from src.components.Attention import SlidingWindowAttention, MultiHeadAttention
+from src.components.Attention import MultiHeadFlashAttention
 
 def parse_hierarchy(hierarchy: str):
     """Parse hierarchy of the entire hourglass transformer.
@@ -133,7 +133,7 @@ class Transformer(nn.Module):
     def __init__(self, 
                  f_dim: int, 
                  dropout: float,
-                 attention_block: MultiHeadAttention | SlidingWindowAttention,
+                 attention_block: MultiHeadFlashAttention,
                  feed_forward_block: FeedForwardNetwork,
                  conditioning_flag: bool = False
                  ):
@@ -167,11 +167,11 @@ class Layer(nn.Module):
                  shortening_factor: int,
                  dropout: float,
                  n_heads: int,
-                 window_size: int,
+                 block_size: int,
                  num_blocks:int,
                  d_ff: int,
                  downflag: bool = False,
-                 condition_every_n_layers:bool = False,
+                 condition_every_n_layers: bool = False,
                  use_conditioning:bool = False):
         super().__init__()
         self.sf = shortening_factor
@@ -183,7 +183,7 @@ class Layer(nn.Module):
         self.blocks = nn.ModuleList([
             Transformer(dim,
                         dropout,
-                        SlidingWindowAttention(dim, window_size, n_heads, dropout),
+                        MultiHeadFlashAttention(dim, n_heads, dropout, False, block_size),
                         FeedForwardNetwork(dim, d_ff, dropout, SwiGLU),
                         use_conditioning = use_conditioning and (i % condition_every_n_layers == 0),
                         )
@@ -209,7 +209,7 @@ class Layer(nn.Module):
 def build_hourglass_valley(
         dim:int,
         num_of_heads: int,
-        window_size: int,
+        block_size: int,
         h_sfs: list[int],
         h_nl: list[int],
         d_ff: int,
@@ -229,7 +229,7 @@ def build_hourglass_valley(
             shortening_factor=sf,
             dropout=dropout,
             n_heads=num_of_heads,
-            window_size=window_size,
+            block_size=block_size,
             num_blocks=n_layers,
             d_ff=d_ff,
             downflag=True,
@@ -244,7 +244,7 @@ def build_hourglass_valley(
             shortening_factor=sf[-1],
             dropout=dropout,
             n_heads=num_of_heads,
-            window_size=window_size,
+            block_size=block_size,
             num_blocks=n_layers[-1],
             d_ff=d_ff,
             downflag=True,
@@ -263,7 +263,7 @@ def build_hourglass_valley(
             shortening_factor=sf,
             dropout=dropout,
             n_heads=num_of_heads,
-            window_size=window_size,
+            block_size=block_size,
             num_blocks=n_layers,
             d_ff=d_ff,
             downflag=False,
