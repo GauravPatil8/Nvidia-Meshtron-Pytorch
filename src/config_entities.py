@@ -13,7 +13,9 @@ class DatasetConfig:
     original_mesh_dir: str
     point_cloud_size: int 
     num_of_bins: int 
-    bounding_box_dim: float 
+    bounding_box_dim: float
+    std_points:float
+    mean_points:float 
     
 @dataclass
 class ModelParams:
@@ -52,3 +54,4 @@ class DataLoaderConfig:
     num_workers: int
     shuffle: bool
     pin_memory: bool
+    persistent_workers:bool

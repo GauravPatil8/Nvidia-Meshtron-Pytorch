@@ -5,7 +5,6 @@ from src.utils.common import get_path, get_root_folder
 from src.config_entities import IngestionConfig, ModelParams, TrainingConfig, DatasetConfig,DataLoaderConfig
 
 class ConfigurationManager:
-
     @staticmethod
     def ingestion_config():
         PROJECT_ROOT = get_root_folder()
@@ -20,6 +19,7 @@ class ConfigurationManager:
     def training_config():
         PROJECT_ROOT = get_root_folder()
         return TrainingConfig(
+            num_epochs=1,
             learning_rate=0.01,
             label_smoothing= 0.1,
             model_folder=get_path(PROJECT_ROOT, "artifacts", "model"),
@@ -32,13 +32,13 @@ class ConfigurationManager:
         PROJECT_ROOT = get_root_folder()
         return ModelParams(
             dim = 512,
-            embedding_size = 130, # 0-127(bins) + 128-130 special tokens,
+            embedding_size = 131, # 0-127(bins) + 128-130 special tokens,
             n_heads = 64,
             block_size=3,
             d_ff=512,
-            hierarchy="12@3 8@6 8@9 8@6 12@3",
+            hierarchy="4@1 8@3 12@9 8@3 4@1",
             dropout = 0.3,
-            seq_len = get_max_seq_len(get_path(PROJECT_ROOT, 'artifacts', 'dataset')),
+            seq_len = get_max_seq_len(get_path(PROJECT_ROOT, 'mesh')),
             tokenizer=None,
             use_conditioning = True,
             con_num_latents= 1024,
@@ -58,17 +58,20 @@ class ConfigurationManager:
             original_mesh_dir=get_path(PROJECT_ROOT, 'mesh'),
             point_cloud_size=8192,
             num_of_bins=128,
-            bounding_box_dim=1.0
+            bounding_box_dim=1.0,
+            std_points=0.1,
+            mean_points=0.0
         )
     
     @staticmethod
     def dataloader_config():
         return DataLoaderConfig(
             train_ratio=0.9,
-            batch_size=32,
-            num_workers=2,
+            batch_size=10,
+            num_workers=0,
             shuffle=True,
-            pin_memory=False
+            pin_memory=False,
+            persistent_workers=False
         )
         
 def get_latest_weights_path(config: TrainingConfig):
