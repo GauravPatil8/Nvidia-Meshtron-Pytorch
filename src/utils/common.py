@@ -9,13 +9,35 @@ def get_root_folder():
     "returns the project's root folder path"
     return os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 
-def logger_init():
-    os.makedirs(R"src/logs/", exist_ok=True)
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s - %(levelname)s - %(message)s",
-        handlers=[
-            logging.FileHandler(R"src/logs/info.log"),
-            logging.StreamHandler()
-        ]
+def logger_init(name="meshtron_logger"):
+   
+    os.makedirs("src/logs/", exist_ok=True)
+
+    # Create a dedicated logger
+    logger = logging.getLogger(name)
+    logger.setLevel(logging.INFO)
+
+    # Avoid propagating messages to root (prevents external libs logging here)
+    logger.propagate = False  
+
+    # File handler
+    fh = logging.FileHandler("src/logs/info.log")
+    fh.setLevel(logging.INFO)
+
+    # Console handler
+    ch = logging.StreamHandler()
+    ch.setLevel(logging.INFO)
+
+    # Formatter
+    formatter = logging.Formatter(
+        "%(asctime)s - %(levelname)s - %(filename)s:%(lineno)d - %(message)s"
     )
+    fh.setFormatter(formatter)
+    ch.setFormatter(formatter)
+
+    # Add handlers (avoid duplicates if re-initialized)
+    if not logger.handlers:
+        logger.addHandler(fh)
+        logger.addHandler(ch)
+
+    return logger
