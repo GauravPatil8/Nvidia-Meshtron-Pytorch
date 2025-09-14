@@ -1,7 +1,7 @@
 import os
 import logging
 from tqdm import tqdm
-from src.utils.common import get_path
+from src.utils.common import get_path, logger_init
 from src.utils.data import save_obj, load_obj, random_transform
 from src.config_entities import IngestionConfig
 class Ingestion:
@@ -20,7 +20,7 @@ class Ingestion:
         self.exists = True if os.path.exists(config.dataset_storage_dir) else False
 
     def run(self):
-        logger = logging.getLogger(__file__)
+        logger = logger_init()
 
         #list of paths of all meshes
         self.meshes = [get_path(self.mesh_dir, path) for path in os.listdir(self.mesh_dir)]
@@ -46,5 +46,5 @@ class Ingestion:
                 logger.info(f"An unexpected error occured during ingestion: {e}")
 
         else:
-            logger.info(f"Dataset already exists, skipping this stage")
+            logger.info(f"Dataset already exists, skipping ingestion stage")
                 
