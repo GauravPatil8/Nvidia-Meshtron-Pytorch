@@ -5,12 +5,10 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".
 
 import torch
 import trimesh
-import numpy as np
-from dataclasses import dataclass
 from torch.utils.data import Dataset, DataLoader, random_split
 from src.utils.common import get_path
 from src.components.VertexTokenizer import VertexTokenizer
-from src.utils.data import get_mesh_stats, get_max_seq_len, normalize_mesh_to_bbox
+from src.utils.data import get_mesh_stats, get_max_seq_len, normalize_mesh_to_bbox, add_gaussian_noise
 from src.config_entities import DatasetConfig, DataLoaderConfig
 
 class PrimitiveDataset(Dataset):
@@ -21,7 +19,9 @@ class PrimitiveDataset(Dataset):
                   tokenizer: VertexTokenizer, 
                   point_cloud_size: int = 2048, 
                   num_of_bins: int = 1024, 
-                  bounding_box_dim: float = 1.0
+                  bounding_box_dim: float = 1.0,
+                  std_points:float,
+                  mean_points:float
                   ):
         """
             Dataset class to handle mesh dataset.
@@ -35,6 +35,8 @@ class PrimitiveDataset(Dataset):
             self.data_dir = dataset_dir
         else:
             raise FileNotFoundError(f"Dataset directory not found: {dataset_dir}")
+        self.std_points = std_points
+        self.mean_points = mean_points
         self.max_seq_len = get_max_seq_len(original_mesh_dir)
         self.num_points = point_cloud_size
         self.num_of_bins = num_of_bins
@@ -62,15 +64,15 @@ class PrimitiveDataset(Dataset):
         #sampling points on the surface of the bounded mesh (N, 3)
         point_cloud = mesh.sample(self.num_points)
 
+        point_cloud = add_gaussian_noise(point_cloud, mean=self.mean_points, std=self.std_points) #according to paper: mean = 0.0, std = 0.1
+
         #decoder input
         dec_input = self.tokenizer.encode(mesh, vertices)
 
-        print(len(dec_input))
         #add special tokens
         num_dec_tokens = 0
-        # if self.max_seq_len != len(dec_input):
-        #     print(f"file {self.files[index]}")
-        num_dec_tokens = self.max_seq_len - len(dec_input) 
+        
+        num_dec_tokens = self.max_seq_len - len(dec_input) - 9
 
         if num_dec_tokens < 0:
             print(f"[ERROR] File: {self.files[index]}")
@@ -119,7 +121,9 @@ def get_dataloaders(dataset_config: DatasetConfig, loader_config: DataLoaderConf
         tokenizer=vertex_tokenizer,
         point_cloud_size=dataset_config.point_cloud_size,
         num_of_bins=dataset_config.num_of_bins,
-        bounding_box_dim=dataset_config.bounding_box_dim
+        bounding_box_dim=dataset_config.bounding_box_dim,
+        std_points = dataset_config.std_points,
+        mean_points = dataset_config.mean_points
     )
 
     dataset_size = len(dataset)
@@ -132,7 +136,8 @@ def get_dataloaders(dataset_config: DatasetConfig, loader_config: DataLoaderConf
         batch_size=loader_config.batch_size,
         shuffle=loader_config.shuffle,
         num_workers=loader_config.num_workers,
-        pin_memory=loader_config.pin_memory
+        pin_memory=loader_config.pin_memory,
+        persistent_workers=loader_config.persistent_workers
     )
 
     test_loader = DataLoader(
@@ -140,7 +145,8 @@ def get_dataloaders(dataset_config: DatasetConfig, loader_config: DataLoaderConf
         batch_size=loader_config.batch_size,
         shuffle=loader_config.shuffle,
         num_workers=loader_config.num_workers,
-        pin_memory=loader_config.pin_memory
+        pin_memory=loader_config.pin_memory,
+        persistent_workers=loader_config.persistent_workers
     )
 
     return train_loader, test_loader, vertex_tokenizer
