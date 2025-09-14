@@ -1,7 +1,7 @@
-import os
-from stages.ingestion import Ingestion
-from stages.training import Trainer
-from config import ConfigurationManager
+import torch
+from src.stages.ingestion import Ingestion
+from src.stages.training import Trainer
+from src.config import ConfigurationManager
 
 class Pipeline:
     def __init__(self):
@@ -12,13 +12,14 @@ class Pipeline:
         self._stages.append(ingestion_stage)
 
         #Training stage
-        training_stage = Trainer(ConfigurationManager.trainig_config(),
+        training_stage = Trainer(ConfigurationManager.training_config(),
                                  ConfigurationManager.model_params(),
-                                 ConfigurationManager.dataloader_config(),
+                                 ConfigurationManager.dataset_config(),
                                  ConfigurationManager.dataloader_config())
         self._stages.append(training_stage)
 
     def run(self):
+        torch.cuda.empty_cache()
         for stage in self._stages:
             stage.run()
             
