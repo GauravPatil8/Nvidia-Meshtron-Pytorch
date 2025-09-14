@@ -1,7 +1,8 @@
+import os
+import sys
 from src.pipeline import Pipeline
-from src.utils.common import logger_init
 
 if __name__ == "__main__":
-    logger_init()
+    sys.path.append(os.path.join(os.path.dirname(__file__)))
     pipeline = Pipeline()
     pipeline.run()
