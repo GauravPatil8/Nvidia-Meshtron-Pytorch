@@ -94,11 +94,12 @@ class Meshtron(nn.Module):
         self.sf = shortening_factor
         self.n_blocks = num_blocks
         self.embedding = InputEmbedding(embedding_size, dim)
-        self.up_sample = LinearUpSample(shortening_factor)
+        self.up_sample = LinearUpSample(shortening_factor[0], dim)
         self.pos_emb = RoPEncoding(dim=dim, seq_len=seq_len)
         self.use_conditioning = use_conditioning
         self.tokenizer = tokenizer
         self.point_cloud_conditioning = ConditioningEncoder(
+            embedding=self.embedding,
             num_latents=con_num_latents,
             latent_dim=con_latent_dim,
             dim_ffn=con_dim_ffn,
@@ -123,7 +124,6 @@ class Meshtron(nn.Module):
             dim,
             n_heads,
             block_size,
-            embedding_size,
             self.sf,
             self.n_blocks,
             d_ff,
@@ -145,20 +145,14 @@ class Meshtron(nn.Module):
 
     def forward(self, x, conditioning_data, face_count, quad_ratio, mask):
 
-        def run_block(block):
-            cond = self.point_cloud_conditioning(conditioning_data, face_count, quad_ratio) if block.use_conditioning else None
+        def run_block(block: Transformer):
+            cond = self.point_cloud_conditioning(conditioning_data, face_count, quad_ratio) if block.conditioning_flag else None
             x = block(x=x, conditions=cond, mask=mask)
             return x
         
         skips = [] #holds skip connection values, used in upsampling
         x = self.embedding(x)
         x = self.pos_emb(x)
-
-        # (B, N, 3) -> (B, N*3) and quantize into discrete bins
-        conditioning_data = self.tokenizer.quantize(torch.flatten(conditioning_data))
-
-        #(B, N*3) -> (B, N*3, dim)
-        conditioning_data = self.embedding(conditioning_data)
 
         #conditioning tensor
         cond= None

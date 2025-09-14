@@ -149,7 +149,7 @@ class Transformer(nn.Module):
         self.attention = attention_block
         self.FFN = feed_forward_block
 
-    def forward(self,*, x: torch.Tensor, conditions: torch.Tensor | None, mask: torch.Tensor | None):
+    def forward(self,*, x: torch.Tensor, conditions: torch.Tensor, mask: torch.Tensor):
         x = self.residuals[0](x, lambda x: self.attention(x, x, x, mask))
         if self.conditioning_flag:
             x = self.residuals[1](x, lambda x: self.attention(x, conditions, conditions, mask))
@@ -185,7 +185,7 @@ class Layer(nn.Module):
                         dropout,
                         MultiHeadFlashAttention(dim, n_heads, dropout, False, block_size),
                         FeedForwardNetwork(dim, d_ff, dropout, SwiGLU),
-                        use_conditioning = use_conditioning and (i % condition_every_n_layers == 0),
+                        conditioning_flag = use_conditioning and (i % condition_every_n_layers == 0),
                         )
             for i in range(num_blocks)
         ])
@@ -241,11 +241,11 @@ def build_hourglass_valley(
     #middle layer
     center_layer = Layer(
             dim=dim,
-            shortening_factor=sf[-1],
+            shortening_factor=h_sfs[-1],
             dropout=dropout,
             n_heads=num_of_heads,
             block_size=block_size,
-            num_blocks=n_layers[-1],
+            num_blocks=h_nl[-1],
             d_ff=d_ff,
             downflag=True,
             condition_every_n_layers=condition_every_n_layers,
