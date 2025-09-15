@@ -72,7 +72,7 @@ def save_obj(filepath, vertices, faces, header):
 
 def normalize_mesh_to_bbox(file_path: str,box_size_dim: float = 1.0):
     """
-    Normalize a mesh so that it fits inside a cube bounding box of size `box_size_dim`.
+    Normalize a mesh so that it fits inside a cube bounding box of size `box_size_dim` and zero centers it.
 
     Parameters:
         mesh (trimesh.Trimesh): Input mesh
@@ -82,6 +82,10 @@ def normalize_mesh_to_bbox(file_path: str,box_size_dim: float = 1.0):
     vertices = get_vertices(file_path)
     min_coord = np.min(vertices, axis=0)
     max_coord = np.max(vertices, axis=0)
+
+    # Center of bounding box
+    center = (max_coord + min_coord) / 2.0
+    vertices -= center  # shift to zero-center
   
     dimension = max_coord - min_coord
     
