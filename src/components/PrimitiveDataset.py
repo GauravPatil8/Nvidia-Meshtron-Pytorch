@@ -8,7 +8,7 @@ import trimesh
 from torch.utils.data import Dataset, DataLoader, random_split
 from src.utils.common import get_path
 from src.components.VertexTokenizer import VertexTokenizer
-from src.utils.data import get_mesh_stats, get_max_seq_len, normalize_mesh_to_bbox, add_gaussian_noise
+from src.utils.data import get_mesh_stats, get_max_seq_len, normalize_mesh_to_bbox, add_gaussian_noise, set_zero_vector
 from src.config_entities import DatasetConfig, DataLoaderConfig
 
 class PrimitiveDataset(Dataset):
@@ -21,7 +21,9 @@ class PrimitiveDataset(Dataset):
                   num_of_bins: int = 1024, 
                   bounding_box_dim: float = 1.0,
                   std_points:float,
-                  mean_points:float
+                  mean_points:float,
+                  mean_normals:float,
+                  std_normals:float
                   ):
         """
             Dataset class to handle mesh dataset.
@@ -37,6 +39,8 @@ class PrimitiveDataset(Dataset):
             raise FileNotFoundError(f"Dataset directory not found: {dataset_dir}")
         self.std_points = std_points
         self.mean_points = mean_points
+        self.mean_normals = mean_normals
+        self.std_normals = std_normals
         self.max_seq_len = get_max_seq_len(original_mesh_dir)
         self.num_points = point_cloud_size
         self.num_of_bins = num_of_bins
@@ -62,9 +66,18 @@ class PrimitiveDataset(Dataset):
         mesh.vertices = vertices
 
         #sampling points on the surface of the bounded mesh (N, 3)
-        point_cloud = mesh.sample(self.num_points)
+        point_cloud, face_indices = trimesh.sample.sample_surface(mesh, self.num_points)
 
+        #point cloud & point normals
+        point_cloud = torch.from_numpy(point_cloud)
+        point_normals = torch.from_numpy(mesh.face_normals[face_indices])
+
+        # augmentation
         point_cloud = add_gaussian_noise(point_cloud, mean=self.mean_points, std=self.std_points) #according to paper: mean = 0.0, std = 0.1
+        point_normals = add_gaussian_noise(point_normals, mean=self.mean_normals, std=self.std_normals)
+        point_normals = set_zero_vector(points=point_normals, rate=0.3, size=point_normals.shape[1])
+
+        points = torch.cat((point_cloud, point_normals), dim=1)
 
         #decoder input
         dec_input = self.tokenizer.encode(mesh, vertices)
@@ -101,7 +114,7 @@ class PrimitiveDataset(Dataset):
             "decoder_input":decoder_input,
             "decoder_mask":(decoder_input != self.PAD).unsqueeze(0).int() & causal_mask(decoder_input.size(0)), # (1, seq_len) & (1, seq_len, seq_len),,
             "target":target,
-            "point_cloud":torch.from_numpy(point_cloud).to(dtype=torch.float32),
+            "point_cloud":points.to(dtype=torch.float32),
             "quad_ratio":torch.tensor(quad_ratio, dtype=torch.float32),
             "face_count":torch.tensor(face_count, dtype=torch.float32),
         }
@@ -123,7 +136,9 @@ def get_dataloaders(dataset_config: DatasetConfig, loader_config: DataLoaderConf
         num_of_bins=dataset_config.num_of_bins,
         bounding_box_dim=dataset_config.bounding_box_dim,
         std_points = dataset_config.std_points,
-        mean_points = dataset_config.mean_points
+        mean_points = dataset_config.mean_points,
+        mean_normals=dataset_config.mean_normals,
+        std_normals=dataset_config.std_normals
     )
 
     dataset_size = len(dataset)

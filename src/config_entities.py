@@ -16,6 +16,8 @@ class DatasetConfig:
     bounding_box_dim: float
     std_points:float
     mean_points:float 
+    mean_normals:float
+    std_normals:float
     
 @dataclass
 class ConditioningConfig:
@@ -38,7 +40,7 @@ class ConditioningConfig:
     self_per_cross_attn: int
     final_classifier_head: bool
     dim_ffn:int
-    
+
 @dataclass
 class ModelParams:
     dim: int

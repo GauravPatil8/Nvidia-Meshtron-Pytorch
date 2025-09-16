@@ -55,7 +55,9 @@ class ConfigurationManager:
             num_of_bins=128,
             bounding_box_dim=1.0,
             std_points=0.1,
-            mean_points=0.0
+            mean_points=0.0,
+            mean_normals=0.0,
+            std_normals=0.3
         )
     
     @staticmethod
