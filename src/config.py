@@ -2,7 +2,7 @@ import os
 from pathlib import Path
 from src.utils.data import get_max_seq_len
 from src.utils.common import get_path, get_root_folder
-from src.config_entities import IngestionConfig, ModelParams, TrainingConfig, DatasetConfig,DataLoaderConfig
+from src.config_entities import IngestionConfig, ModelParams, TrainingConfig, DatasetConfig,DataLoaderConfig, ConditioningConfig
 
 class ConfigurationManager:
     @staticmethod
@@ -41,13 +41,8 @@ class ConfigurationManager:
             seq_len = get_max_seq_len(get_path(PROJECT_ROOT, 'mesh')),
             tokenizer=None,
             use_conditioning = True,
-            con_num_latents= 1024,
-            con_latent_dim=512,
-            con_dim_ffn=512,
-            con_num_blocks=8,
-            con_n_attn_heads=64,
-            con_num_self_attention_blocks= 8,
-            condition_every_n_layers= 4         
+            condition_every_n_layers= 4,
+            conditioning_config= ConfigurationManager.conditioning_config()        
         )
 
     @staticmethod
@@ -73,7 +68,31 @@ class ConfigurationManager:
             pin_memory=False,
             persistent_workers=False
         )
-        
+    @staticmethod 
+    def conditioning_config():
+        return ConditioningConfig(
+            num_freq_bands= 6,
+            depth = 6,
+            max_freq = 10.,
+            input_channels=6,
+            input_axis= 1,
+            num_latents = 1024,
+            latent_dim = 512,
+            cross_heads = 1,
+            latent_heads = 8,
+            cross_dim_head = 8,
+            latent_dim_head = 8,
+            num_classes = 1,
+            attn_dropout = 0.1,
+            ff_dropout= 0.2,
+            weight_tie_layers = 2,
+            fourier_encode_data = True,
+            self_per_cross_attn = 4,
+            final_classifier_head = False,
+            dim_ffn = 512
+        )
+    
+
 def get_latest_weights_path(config: TrainingConfig):
     weights_files = list(Path(config.model_folder).glob(config.model_basename))
     if len(weights_files) == 0:

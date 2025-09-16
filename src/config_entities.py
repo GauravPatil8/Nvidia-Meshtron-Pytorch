@@ -18,6 +18,28 @@ class DatasetConfig:
     mean_points:float 
     
 @dataclass
+class ConditioningConfig:
+    num_freq_bands: int
+    depth: int
+    max_freq: float
+    input_channels: int
+    input_axis: int
+    num_latents: int
+    latent_dim: int
+    cross_heads: int
+    latent_heads: int
+    cross_dim_head: int
+    latent_dim_head: int
+    num_classes: int
+    attn_dropout: float
+    ff_dropout: float
+    weight_tie_layers: int
+    fourier_encode_data: bool
+    self_per_cross_attn: int
+    final_classifier_head: bool
+    dim_ffn:int
+    
+@dataclass
 class ModelParams:
     dim: int
     embedding_size: int
@@ -29,13 +51,8 @@ class ModelParams:
     seq_len: int
     tokenizer: any
     use_conditioning: bool
-    con_num_latents:int
-    con_latent_dim:int
-    con_dim_ffn:int
-    con_num_blocks:int
-    con_n_attn_heads:int
-    con_num_self_attention_blocks: int
     condition_every_n_layers: int
+    conditioning_config: ConditioningConfig
     
 @dataclass
 class TrainingConfig:
