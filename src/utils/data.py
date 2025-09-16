@@ -177,3 +177,17 @@ def get_max_seq_len(data_dir: str):
 def add_gaussian_noise(x:torch.Tensor, mean:float, std: float):
     noise = torch.normal(mean=mean, std=std, size=x.shape, device=x.device)
     return x + noise
+
+def set_zero_vector(points: torch.Tensor, rate: float, size: int):
+    """Selects random points and sets them to zero vector
+        Params:
+            points: Tensor 
+            rate: % of conversion
+            size: size of zero array
+    """
+    n_points = len(points)
+    k = int(n_points * rate)
+    indices = torch.randperm(n_points)[:k]
+    points[indices] = torch.zeros(size)
+    return points
+    
