@@ -15,7 +15,7 @@ from src.components.HourglassTransformer import (
 from src.components.PositionalEncoding import RoPEncoding
 from src.config_entities import ModelParams
 from src.components.VertexTokenizer import VertexTokenizer
-
+from src.config_entities import ConditioningConfig
 
 class Meshtron(nn.Module):
     """
@@ -60,13 +60,8 @@ class Meshtron(nn.Module):
                  seq_len: int,
                  tokenizer: VertexTokenizer,
                  use_conditioning: bool,
-                 con_num_latents:int,
-                 con_latent_dim:int,
-                 con_dim_ffn:int,
-                 con_num_blocks:int,
-                 con_n_attn_heads:int,
-                 con_num_self_attention_blocks: int,
-                 condition_every_n_layers: int,
+                 condition_every_n_layers:int,
+                 conditioning_params: ConditioningConfig,
                  ):
         """
             Initialize Meshtron Model
@@ -99,16 +94,26 @@ class Meshtron(nn.Module):
         self.use_conditioning = use_conditioning
         self.tokenizer = tokenizer
         self.point_cloud_conditioning = ConditioningEncoder(
-            embedding=self.embedding,
-            num_latents=con_num_latents,
-            latent_dim=con_latent_dim,
-            dim_ffn=con_dim_ffn,
-            num_blocks=con_num_blocks,
-            heads=con_n_attn_heads,
-            num_self_attention=con_num_self_attention_blocks,
-            attn_block_size=block_size
+            input_channels=conditioning_params.input_channels,
+            input_axis=conditioning_params.input_axis,
+            num_freq_bands=conditioning_params.num_freq_bands,
+            max_freq=conditioning_params.max_freq,
+            depth=conditioning_params.depth,
+            num_latents=conditioning_params.num_latents,
+            latent_dim=conditioning_params.latent_dim,
+            cross_heads=conditioning_params.cross_heads,
+            latent_heads=conditioning_params.latent_heads,
+            cross_dim_head=conditioning_params.cross_dim_head,
+            latent_dim_head=conditioning_params.latent_dim_head,
+            num_classes=conditioning_params.num_classes,
+            attn_dropout=conditioning_params.attn_dropout,
+            ff_dropout=conditioning_params.ff_dropout,
+            weight_tie_layers=conditioning_params.weight_tie_layers,
+            fourier_encode_data=conditioning_params.fourier_encode_data,
+            self_per_cross_attn=conditioning_params.self_per_cross_attn,
+            final_classifier_head=conditioning_params.final_classifier_head,
+            dim_ffn=conditioning_params.dim_ffn
         )
-
         self.pre_blocks = nn.ModuleList([
             Transformer(
                 dim,
@@ -200,11 +205,6 @@ def get_model(model_params: ModelParams):
             seq_len=model_params.seq_len,
             tokenizer = model_params.tokenizer,
             use_conditioning= model_params.use_conditioning,
-            con_num_latents= model_params.con_num_latents,
-            con_latent_dim= model_params.con_latent_dim,
-            con_dim_ffn= model_params.con_dim_ffn,
-            con_num_blocks= model_params.con_num_blocks,
-            con_n_attn_heads= model_params.con_n_attn_heads,
-            con_num_self_attention_blocks= model_params.con_num_self_attention_blocks,
-            condition_every_n_layers= model_params.condition_every_n_layers
+            condition_every_n_layers= model_params.condition_every_n_layers,
+            conditioning_params=model_params.conditioning_config
         )
