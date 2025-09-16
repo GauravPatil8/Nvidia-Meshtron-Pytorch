@@ -1,23 +1,55 @@
 import torch
 import torch.nn as nn
-from src.components.Attention import MultiHeadAttention
+from perceiver_pytorch import Perceiver
 
+    
 class ConditioningEncoder(nn.Module):
     """Conditions the meshtron model on 3d point cloud"""
     def __init__(self,
                  *,
-                 num_latents:int,
-                 latent_dim:int,
+                 input_channels: int,          
+                 input_axis: int,              
+                 num_freq_bands: int,          
+                 max_freq: float,              
+                 depth: int,                                        
+                 num_latents: int,           
+                 latent_dim: int,            
+                 cross_heads: int,             
+                 latent_heads: int,            
+                 cross_dim_head: int,         
+                 latent_dim_head: int,        
+                 num_classes: int,          
+                 attn_dropout: float,
+                 ff_dropout: float,
+                 weight_tie_layers: bool,   
+                 fourier_encode_data: bool,  
+                 self_per_cross_attn: int,   
+                 final_classifier_head:bool,
                  dim_ffn:int,
-                 num_blocks:int,
-                 heads:int,
-                 num_self_attention: int,
                  ):
         super().__init__()
 
-        self.latents = nn.Parameter(torch.randn(num_latents, latent_dim))
-        self.layers = nn.ModuleList([])
-        self.self_attn = nn.ModuleList([])
+        self.model = Perceiver(
+            num_freq_bands=num_freq_bands,
+            depth=depth,
+            max_freq=max_freq,
+            input_channels=input_channels,
+            input_axis=input_axis,
+            num_latents = num_latents,
+            latent_dim=latent_dim,
+            cross_heads=cross_heads,
+            latent_heads=latent_heads,
+            cross_dim_head=cross_dim_head,
+            latent_dim_head=latent_dim_head,
+            num_classes=num_classes,
+            attn_dropout=attn_dropout,
+            ff_dropout=ff_dropout,
+            weight_tie_layers=weight_tie_layers,
+            fourier_encode_data=fourier_encode_data,
+            self_per_cross_attn=self_per_cross_attn,
+            final_classifier_head=final_classifier_head
+        )
+        
         self.face_count_mlp = nn.Sequential(
             nn.Linear(1, dim_ffn),
             nn.ReLU(),
@@ -28,51 +60,22 @@ class ConditioningEncoder(nn.Module):
             nn.ReLU(),
             nn.Linear(dim_ffn, latent_dim)
         )
-        for _ in range(num_self_attention):
-            self.self_attn.append(nn.ModuleList([
-                MultiHeadAttention(latent_dim, heads), # does self attention
-                nn.Sequential(
-                    nn.Linear(latent_dim, dim_ffn),
-                    nn.GELU(),
-                    nn.Linear(dim_ffn, latent_dim)
-                ),
-                nn.LayerNorm(latent_dim)
-                ]))
-        for _ in range(num_blocks):
-            block = [
-                MultiHeadAttention(latent_dim, heads), # does cross attention
-                nn.LayerNorm(latent_dim),
-                nn.Sequential(
-                    nn.Linear(latent_dim, dim_ffn),
-                    nn.GELU(),
-                    nn.Linear(dim_ffn, latent_dim)
-                ),
-                self.self_attn
-            ]
-            self.layers.append(nn.ModuleList(block))
                 
-            
     def forward(self, point_input, face_count,
                  quad_ratio):
+        
         b = point_input.shape[0]
 
-        latents = self.latents.unsqueeze(0).expand(b,-1,-1) 
+        latents = self.model(data = point_input, return_embeddings = True)
 
-        face_count_enc = self.face_count_mlp(torch.tensor(face_count.view(b, 1), dtype=torch.float32))
-        quad_ratio_enc = self.quad_ratio_mlp(torch.tensor(quad_ratio.view(b, 1), dtype=torch.float32))
+        #(B) -> (B, 1)
+        face_count = face_count.view(b, -1)
+        quad_ratio = quad_ratio.view(b, -1)
+
+        face_count_enc = self.face_count_mlp(face_count)
+        quad_ratio_enc = self.quad_ratio_mlp(quad_ratio)
 
         face_count_enc.unsqueeze_(1)
         quad_ratio_enc.unsqueeze_(1)
-
-
-        for cross_attn, norm1, cross_ffn,self_attn_blocks in self.layers:
-            latents = latents + cross_attn(latents, point_input, point_input)
-            latents = norm1(latents)
-            latents = latents + cross_ffn(latents)
-            
-            for attn, ffn, norm in self_attn_blocks:
-                latents = latents + attn(latents, latents, latents)
-                latents = latents + ffn(latents)
-                latents = norm(latents)
 
         return torch.cat([latents, face_count_enc, quad_ratio_enc], dim=1)
