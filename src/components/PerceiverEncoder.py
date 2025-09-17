@@ -66,7 +66,8 @@ class ConditioningEncoder(nn.Module):
         
         b = point_input.shape[0]
 
-        latents = self.model(data = point_input, return_embeddings = True)
+        #return_embeddings = True - Returns the latents instead of class logits
+        latents = self.model(data = point_input, return_embeddings = True) 
 
         #(B) -> (B, 1)
         face_count = face_count.view(b, -1)
