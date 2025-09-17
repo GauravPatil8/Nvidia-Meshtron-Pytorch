@@ -86,7 +86,7 @@ class FeedForwardNetwork(nn.Module):
     def __init__(self, dim:int, d_ff:int, dropout:float, activation):
         super().__init__()
         self.linear1 = nn.Linear(dim, 2 * d_ff) #for swiglu chunking
-        self.linear2 = nn.Linear(d_ff, dim)
+        self.linear2 = nn.Linear(2 * d_ff, dim)
         self.dropout = nn.Dropout(dropout)
         self.activation = activation
     
