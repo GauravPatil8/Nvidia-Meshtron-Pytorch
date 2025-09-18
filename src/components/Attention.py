@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from typing import Optional, Tuple
-from src.components.PositionalEncoding import RoPEncoding
+from src.components.RollingKV import RollingKVCache
 
 class FlashAttention(nn.Module):
     """
@@ -37,8 +37,10 @@ class FlashAttention(nn.Module):
         k: torch.Tensor,
         v: torch.Tensor,
         causal: bool = False,
-        return_softmax: bool = False
-    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+        return_softmax: bool = False,
+        kv_cache: Optional[RollingKVCache] = None,
+        layer_idx: Optional[int] = None
+        ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         """
         Forward pass of FlashAttention2.
         
@@ -53,7 +55,29 @@ class FlashAttention(nn.Module):
             output: Attention output [batch_size, num_heads, seq_len, head_dim]
             attention_weights: Optional attention weights if return_softmax=True
         """
+
         batch_size, num_heads, seq_len, head_dim = q.shape
+
+
+        if kv_cache is not None and layer_idx is not None:
+
+            # Convert current KV from [batch_size, num_heads, seq_len, head_dim] 
+            # to [seq_len, num_heads, head_dim] for cache update
+            k_new = k.unsqueeze(0).transpose(0, 1)
+            v_new = v.unsqueeze(0).transpose(0, 1)
+
+            kv_cache.update(layer_idx, k_new, v_new)
+
+            k_full, v_full = kv_cache.get(layer_idx)
+
+            # Convert back to [batch_size, num_heads, full_len, head_dim]
+            k = k_full.transpose(0, 1).unsqueeze(0)
+            v = v_full.transpose(0, 1).unsqueeze(0)
+
+            full_seq_len = k.size(2)
+        else:
+            full_seq_len = seq_len
+
         
         # Scale queries
         q = q * self.scale
@@ -65,7 +89,9 @@ class FlashAttention(nn.Module):
         lse = torch.zeros(batch_size, num_heads, seq_len, device=q.device, dtype=torch.float32)
         
         # Block-wise computation
-        num_blocks = math.ceil(seq_len / self.block_size)
+        num_q_blocks = math.ceil(seq_len / self.block_size)
+        num_kv_blocks = math.ceil(full_seq_len / self.block_size)
+
         
         # Optional: store attention weights if requested
         if return_softmax:
@@ -74,7 +100,7 @@ class FlashAttention(nn.Module):
                 device=q.device, dtype=q.dtype
             )
         
-        for i in range(num_blocks):
+        for i in range(num_q_blocks):
             # Query block indices
             q_start = i * self.block_size
             q_end = min((i + 1) * self.block_size, seq_len)
@@ -92,7 +118,7 @@ class FlashAttention(nn.Module):
             )
             
             # Iterate over key-value blocks
-            for j in range(num_blocks):
+            for j in range(num_kv_blocks):
                 # Key-value block indices
                 kv_start = j * self.block_size
                 kv_end = min((j + 1) * self.block_size, seq_len)
@@ -210,7 +236,9 @@ class MultiHeadFlashAttention(nn.Module):
         k: torch.Tensor,
         v: torch.Tensor,
         causal: bool = False,
-        return_attention: bool = False
+        return_attention: bool = False,
+        kv_cache: Optional[RollingKVCache] = None,
+        layer_idx: Optional[int] = None
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         """
         Forward pass of multi-head FlashAttention2.
@@ -235,7 +263,7 @@ class MultiHeadFlashAttention(nn.Module):
         v = self.v_proj(v).view(v_batch_size, v_seq_len, self.num_heads, self.head_dim).transpose(1, 2)
         
         # Apply FlashAttention2
-        attn_output, attn_weights = self.flash_attn(q, k, v, causal=causal, return_softmax=return_attention)
+        attn_output, attn_weights = self.flash_attn(q, k, v, causal=causal, return_softmax=return_attention,kv_cache = kv_cache, layer_idx = layer_idx)
         
         # Reshape and apply output projection
         attn_output = attn_output.transpose(1, 2).contiguous().view(q_batch_size, q_seq_len, q_embed_dim)
