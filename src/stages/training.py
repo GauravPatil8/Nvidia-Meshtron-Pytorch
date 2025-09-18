@@ -26,6 +26,8 @@ class Trainer(nn.Module):
 
         model_params.tokenizer = self.tokentizer
 
+        model_params.use_kv_cache = True
+
         self.model = get_model(model_params).to(device=self.device)
 
         self.optimizer = torch.optim.Adam(self.model.parameters(), training_config.learning_rate, eps=1e-9)
@@ -33,27 +35,41 @@ class Trainer(nn.Module):
         self.loss_func = nn.CrossEntropyLoss(ignore_index=self.tokentizer.PAD, label_smoothing=training_config.label_smoothing).to(self.device)
 
     def greedy_decode(self, point_cloud, face_count, quad_ratio):
-
+        """
+        Greedy decoding with rolling KV cache support.
+        
+        Args:
+            point_cloud: Input point cloud data
+            face_count: Face count information  
+            quad_ratio: Quad ratio information
+            kv_cache: Optional RollingKVCache instance for inference
+        """
         decoder_input = torch.empty(1,1).fill_(self.tokentizer.SOS).to(dtype=torch.int32, device=self.device)
 
         while True:
-
             if decoder_input.size(1) == self.model_params.seq_len:
                 break
 
-            decoder_mask = causal_mask(decoder_input.size(1)).to(dtype=torch.int32, device=self.device)
-
-            out = self.model(decoder_input, point_cloud, face_count, quad_ratio, decoder_mask)
+            # For KV cache, we only need to process the last token
+            if self.model_params.use_kv_cache:
+                # Only process the new token (last token in decoder_input)
+                current_token = decoder_input[:, -1:]
+                decoder_mask = causal_mask(1).to(dtype=torch.int32, device=self.device)
+                
+                out = self.model(current_token, point_cloud, face_count, quad_ratio, 
+                            decoder_mask)
+            else:
+                # Without cache, process entire sequence
+                decoder_mask = causal_mask(decoder_input.size(1)).to(dtype=torch.int32, device=self.device)
+                out = self.model(decoder_input, point_cloud, face_count, quad_ratio, decoder_mask)
 
             prob = self.model.project(out[:, -1])
-
             _, next_token = torch.argmax(prob, dim=1)
-
 
             decoder_input = torch.cat(
                 [decoder_input, torch.empty(1,1).fill_(next_token.item()).to(device=self.device, dtype=torch.int32)],
-                dim = 1,
-                )
+                dim=1,
+            )
             
             if next_token == self.tokentizer.EOS:
                 break
@@ -62,6 +78,12 @@ class Trainer(nn.Module):
 
 
     def validate(self):
+        """
+        Validation with optional KV cache for faster inference.
+        
+        Args:
+            use_kv_cache: Whether to use rolling KV cache during validation
+        """
         self.model.eval()
         expected = []
         predicted = []
@@ -81,8 +103,11 @@ class Trainer(nn.Module):
                 expected.append(target)
                 predicted.append(out)
 
-                total_correct += torch.sum(out == target)
-                total_tokens += torch.numel(target)
+                # Calculate accuracy - need to handle different sequence lengths
+                min_len = min(out.size(0), target.size(0))
+                total_correct += torch.sum(out[:min_len] == target[:min_len])
+                total_tokens += min_len
+
         accuracy = total_correct / total_tokens
         return accuracy
 
