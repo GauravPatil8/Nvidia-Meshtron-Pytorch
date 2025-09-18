@@ -42,6 +42,8 @@ class ConfigurationManager:
             tokenizer=None,
             use_conditioning = True,
             condition_every_n_layers= 4,
+            use_kv_cache = False,
+            rolling_max_seq=72000,
             conditioning_config= ConfigurationManager.conditioning_config()        
         )
 

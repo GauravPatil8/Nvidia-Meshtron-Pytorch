@@ -54,6 +54,8 @@ class ModelParams:
     tokenizer: any
     use_conditioning: bool
     condition_every_n_layers: int
+    use_kv_cache: bool
+    rolling_max_seq: int
     conditioning_config: ConditioningConfig
     
 @dataclass
