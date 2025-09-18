@@ -1,9 +1,10 @@
 import torch
 import math
 import torch.nn as nn
+from typing import Optional
 import torch.nn.functional as F
+from src.components.RollingKV import RollingKVCache
 from src.components.Attention import MultiHeadFlashAttention
-
 def parse_hierarchy(hierarchy: str):
     """Parse hierarchy of the entire hourglass transformer.
 
@@ -135,7 +136,7 @@ class Transformer(nn.Module):
                  dropout: float,
                  attention_block: MultiHeadFlashAttention,
                  feed_forward_block: FeedForwardNetwork,
-                 conditioning_flag: bool = False
+                 conditioning_flag: bool = False,
                  ):
         super().__init__()
         self.norm = LayerNormalization(f_dim)
@@ -149,10 +150,10 @@ class Transformer(nn.Module):
         self.attention = attention_block
         self.FFN = feed_forward_block
 
-    def forward(self,*, x: torch.Tensor, conditions: torch.Tensor, mask: torch.Tensor):
-        x = self.residuals[0](x, lambda x: self.attention(x, x, x, mask))
+    def forward(self,*, x: torch.Tensor, conditions: torch.Tensor, mask: torch.Tensor, rolling_kv_cache: Optional[RollingKVCache] = None ):
+        x = self.residuals[0](x, lambda x: self.attention(x, x, x, mask, self.rolling_kv_cache))
         if self.conditioning_flag:
-            x = self.residuals[1](x, lambda x: self.attention(x, conditions, conditions, mask))
+            x = self.residuals[1](x, lambda x: self.attention(x, conditions, conditions, mask, rolling_kv_cache))
             x = self.residuals[2](x, self.FFN)
         else:
             x = self.residuals[1](x, self.FFN)
@@ -172,7 +173,8 @@ class Layer(nn.Module):
                  d_ff: int,
                  downflag: bool = False,
                  condition_every_n_layers: bool = False,
-                 use_conditioning:bool = False):
+                 use_conditioning:bool = False,
+                 rolling_kv_cache: Optional[RollingKVCache] = None):
         super().__init__()
         self.sf = shortening_factor
         self.dropout = dropout
@@ -189,25 +191,27 @@ class Layer(nn.Module):
                         )
             for i in range(num_blocks)
         ])
-    
+        self.rolling_kv_cache = rolling_kv_cache
+
     def forward(self, x, conditions, mask):
         
         if self.downflag:
             x = self.downsample(x)
 
         #tranformer blocks   
-        def run_blocks(x, conditions, mask):
+        def run_blocks(x, conditions, mask, rolling_kv_cache):
             for block in self.blocks:
-                x = block(x = x, conditions = conditions, mask = mask)
+                x = block(x = x, conditions = conditions, mask = mask, rolling_kv_cache = rolling_kv_cache)
             return x
 
-        x = self.residuals(x, lambda x: run_blocks(x, conditions, mask))
+        x = self.residuals(x, lambda x: run_blocks(x, conditions, mask, self.rolling_kv_cache))
 
         return x
         
 
 def build_hourglass_valley(
         dim:int,
+        rolling_max_seq: int,
         num_of_heads: int,
         block_size: int,
         h_sfs: list[int],
@@ -215,15 +219,17 @@ def build_hourglass_valley(
         d_ff: int,
         dropout: float,
         condition_every_n_layers: bool,
-        use_conditioning: bool
+        use_conditioning: bool,
+        use_kv_cache: bool = True
     ) -> nn.ModuleList:
     
     assert len(h_sfs) == len(h_nl) >= 1
 
     down_layers = nn.ModuleList()
-
+    rolling_kv_cache = None
     #funneling down
     for sf, n_layers in list(zip(h_sfs, h_nl))[:-1]:
+        rolling_kv_cache = RollingKVCache(n_layers, num_of_heads, dim // num_of_heads, rolling_max_seq) if use_kv_cache else None
         layer = Layer(
             dim=dim,
             shortening_factor=sf,
@@ -234,11 +240,13 @@ def build_hourglass_valley(
             d_ff=d_ff,
             downflag=True,
             condition_every_n_layers=condition_every_n_layers,
-            use_conditioning=use_conditioning
+            use_conditioning=use_conditioning,
+            rolling_kv_cache=rolling_kv_cache
         )
         down_layers.append(layer)
 
     #middle layer
+    rolling_kv_cache = RollingKVCache(n_layers, num_of_heads, dim // num_of_heads, rolling_max_seq) if use_kv_cache else None
     center_layer = Layer(
             dim=dim,
             shortening_factor=h_sfs[-1],
@@ -249,7 +257,8 @@ def build_hourglass_valley(
             d_ff=d_ff,
             downflag=True,
             condition_every_n_layers=condition_every_n_layers,
-            use_conditioning=use_conditioning
+            use_conditioning=use_conditioning,
+            rolling_kv_cache=rolling_kv_cache
         )
 
 
@@ -258,6 +267,8 @@ def build_hourglass_valley(
     up_nl = [nl for nl in reversed(h_nl)][1:]
     up_layers = nn.ModuleList()
     for sf, n_layers in reversed(list(zip(up_sf, up_nl))):
+        
+        rolling_kv_cache = RollingKVCache(n_layers, num_of_heads, dim // num_of_heads, rolling_max_seq) if use_kv_cache else None
         layer = Layer(
             dim=dim,
             shortening_factor=sf,
@@ -268,7 +279,8 @@ def build_hourglass_valley(
             d_ff=d_ff,
             downflag=False,
             condition_every_n_layers=condition_every_n_layers,
-            use_conditioning=use_conditioning
+            use_conditioning=use_conditioning,
+            rolling_kv_cache=rolling_kv_cache
         )
         up_layers.append(layer)
 

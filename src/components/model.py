@@ -16,6 +16,7 @@ from src.components.PositionalEncoding import RoPEncoding
 from src.config_entities import ModelParams
 from src.components.VertexTokenizer import VertexTokenizer
 from src.config_entities import ConditioningConfig
+from src.components.RollingKV import RollingKVCache
 
 class Meshtron(nn.Module):
     """
@@ -61,6 +62,8 @@ class Meshtron(nn.Module):
                  tokenizer: VertexTokenizer,
                  use_conditioning: bool,
                  condition_every_n_layers:int,
+                 use_kv_cache: bool,
+                 rolling_max_seq: int,
                  conditioning_params: ConditioningConfig,
                  ):
         """
@@ -127,6 +130,7 @@ class Meshtron(nn.Module):
 
         self.down_valley, self.center_layer, self.up_valley = build_hourglass_valley(
             dim,
+            rolling_max_seq,
             n_heads,
             block_size,
             self.sf,
@@ -147,12 +151,14 @@ class Meshtron(nn.Module):
         ])
 
         self.out_proj = ProjectionLayer(dim, embedding_size)
+        
+        self.rolling_kv_cache = RollingKVCache(n_pre_post_blocks, n_heads, dim // n_heads, rolling_max_seq) if use_kv_cache else None
 
     def forward(self, x, conditioning_data, face_count, quad_ratio, mask):
 
         def run_block(block: Transformer):
             cond = self.point_cloud_conditioning(conditioning_data, face_count, quad_ratio) if block.conditioning_flag else None
-            x = block(x=x, conditions=cond, mask=mask)
+            x = block(x=x, conditions=cond, mask=mask, rolling_kv_cache = self.rolling_kv_cache)
             return x
         
         skips = [] #holds skip connection values, used in upsampling
@@ -168,8 +174,8 @@ class Meshtron(nn.Module):
         skips.append(x) # Appending residuals to be added later
 
         #Downsampling valley
-        for block in self.down_valley:
-            x = run_block(block)
+        for layer in self.down_valley:
+            x = layer(x=x, conditions=cond, mask=mask)
             skips.append(x)
 
         #center layer of valley
@@ -177,9 +183,9 @@ class Meshtron(nn.Module):
 
         
         #upsampling valley
-        for block, skip in zip(self.up_valley, reversed(skips[1:])):
+        for layer, skip in zip(self.up_valley, reversed(skips[1:])):
             x = self.up_sample(x, skip)
-            x = run_block(block)
+            x = layer(x=x, conditions=cond, mask=mask)
 
         #upsampling for the last vanilla block
         x = self.up_sample(x, skips[0])
@@ -206,5 +212,7 @@ def get_model(model_params: ModelParams):
             tokenizer = model_params.tokenizer,
             use_conditioning= model_params.use_conditioning,
             condition_every_n_layers= model_params.condition_every_n_layers,
+            use_kv_cache=model_params.use_kv_cache,
+            rolling_max_seq=model_params.rolling_max_seq,
             conditioning_params=model_params.conditioning_config
         )
