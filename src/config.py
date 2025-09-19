@@ -2,7 +2,14 @@ import os
 from pathlib import Path
 from src.utils.data import get_max_seq_len
 from src.utils.common import get_path, get_root_folder
-from src.config_entities import IngestionConfig, ModelParams, TrainingConfig, DatasetConfig,DataLoaderConfig, ConditioningConfig
+from src.config_entities import (
+    IngestionConfig, 
+    ModelParams, 
+    TrainingConfig, 
+    DatasetConfig,
+    DataLoaderConfig, 
+    ConditioningConfig
+)
 
 class ConfigurationManager:
     @staticmethod
