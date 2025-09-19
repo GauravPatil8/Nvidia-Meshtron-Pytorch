@@ -89,6 +89,14 @@ class Meshtron(nn.Module):
         """
         super().__init__()
         shortening_factor, num_blocks, n_pre_post_blocks = parse_hierarchy(hierarchy=hierarchy)
+
+        funnel_n_layers = 0
+        for i in num_blocks[:-1]:
+            funnel_n_layers += i 
+        total_layers = n_pre_post_blocks + (funnel_n_layers * 2) + num_blocks[1]
+        self.rolling_kv_cache = RollingKVCache(total_layers, n_heads, dim // n_heads, rolling_max_seq) if use_kv_cache else None
+
+
         self.sf = shortening_factor
         self.n_blocks = num_blocks
         self.embedding = InputEmbedding(embedding_size, dim)
@@ -130,7 +138,6 @@ class Meshtron(nn.Module):
 
         self.down_valley, self.center_layer, self.up_valley = build_hourglass_valley(
             dim,
-            rolling_max_seq,
             n_heads,
             block_size,
             self.sf,
@@ -138,7 +145,8 @@ class Meshtron(nn.Module):
             d_ff,
             dropout,
             condition_every_n_layers,
-            use_conditioning
+            use_conditioning,
+            rolling_kv_cache=self.rolling_kv_cache
         )
                                              
         self.post_block = nn.ModuleList([
@@ -152,7 +160,6 @@ class Meshtron(nn.Module):
 
         self.out_proj = ProjectionLayer(dim, embedding_size)
         
-        self.rolling_kv_cache = RollingKVCache(n_pre_post_blocks, n_heads, dim // n_heads, rolling_max_seq) if use_kv_cache else None
 
     def forward(self, x, conditioning_data, face_count, quad_ratio, mask):
 
