@@ -1,7 +1,7 @@
 import torch
 
 class RollingKVCache:
-    def init(self, n_layers, n_heads, head_dim, max_len):
+    def __init__(self, n_layers, n_heads, head_dim, max_len):
         """
         Args:
             num_layers: number of transformer layers
@@ -13,15 +13,14 @@ class RollingKVCache:
         self.num_heads = n_heads
         self.head_dim = head_dim
         self.max_len = max_len
-        self.device = torch.device("gpu" if torch.cuda.is_available() else "cpu")
-
+        
         # initialize cache
         self.clear()
 
     def clear(self):
         self.cache = {
-            "k": [torch.zeros(0, self.num_heads, self.headdim, device=self.device) for _ in range(self.num_layers)],
-            "v": [torch.zeros(0, self.num_heads, self.headdim, device=self.device) for _ in range(self.num_layers)]
+            "k": [torch.zeros(0, self.num_heads, self.head_dim, device=self.device) for _ in range(self.num_layers)],
+            "v": [torch.zeros(0, self.num_heads, self.head_dim, device=self.device) for _ in range(self.num_layers)]
         }
 
     def update(self, layer_idx, k_new, v_new):
