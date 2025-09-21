@@ -36,13 +36,14 @@ class ConfigurationManager:
     
     @staticmethod
     def model_params():
+        #configured according to Meshtron-small
         PROJECT_ROOT = get_root_folder()
         return ModelParams(
-            dim = 512,
+            dim = 1024,
             embedding_size = 131, # 0-127(bins) + 128-130 special tokens,
             n_heads = 64,
-            block_size=3,
-            d_ff=512,
+            block_size=64,
+            d_ff=2816,
             hierarchy="4@1 8@3 12@9 8@3 4@1",
             dropout = 0.3,
             seq_len = get_max_seq_len(get_path(PROJECT_ROOT, 'mesh')),
@@ -51,6 +52,7 @@ class ConfigurationManager:
             condition_every_n_layers= 4,
             use_kv_cache = False,
             rolling_max_seq=72000,
+            rope_theta=10000, #paper mentions 1M, but primitive sequences are small ~11k so using 10K is optimal. Use 1M for sequences > 32k
             conditioning_config= ConfigurationManager.conditioning_config()        
         )
 
@@ -83,16 +85,16 @@ class ConfigurationManager:
     def conditioning_config():
         return ConditioningConfig(
             num_freq_bands= 6,
-            depth = 6,
+            depth = 8,
             max_freq = 10.,
             input_channels=6,
             input_axis= 1,
             num_latents = 1024,
-            latent_dim = 512,
+            latent_dim = 1024,
             cross_heads = 1,
             latent_heads = 8,
-            cross_dim_head = 8,
-            latent_dim_head = 8,
+            cross_dim_head = 1024,
+            latent_dim_head = 1024 // 8,
             num_classes = 1,
             attn_dropout = 0.1,
             ff_dropout= 0.2,
@@ -100,7 +102,7 @@ class ConfigurationManager:
             fourier_encode_data = True,
             self_per_cross_attn = 4,
             final_classifier_head = False,
-            dim_ffn = 512
+            dim_ffn = 2816
         )
     
 

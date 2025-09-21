@@ -56,6 +56,7 @@ class ModelParams:
     condition_every_n_layers: int
     use_kv_cache: bool
     rolling_max_seq: int
+    rope_theta: int
     conditioning_config: ConditioningConfig
     
 @dataclass
