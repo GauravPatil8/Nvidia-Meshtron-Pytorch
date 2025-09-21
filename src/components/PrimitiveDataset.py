@@ -70,7 +70,7 @@ class PrimitiveDataset(Dataset):
 
         #point cloud & point normals
         point_cloud = torch.from_numpy(point_cloud)
-        point_normals = torch.from_numpy(mesh.face_normals[face_indices])
+        point_normals = torch.from_numpy(mesh.face_normals[face_indices]).to(dtype=torch.float32)
 
         # augmentation
         point_cloud = add_gaussian_noise(point_cloud, mean=self.mean_points, std=self.std_points) #according to paper: mean = 0.0, std = 0.1
