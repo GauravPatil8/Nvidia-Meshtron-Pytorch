@@ -64,6 +64,7 @@ class Meshtron(nn.Module):
                  condition_every_n_layers:int,
                  use_kv_cache: bool,
                  rolling_max_seq: int,
+                 rope_theta: int,
                  conditioning_params: ConditioningConfig,
                  ):
         """
@@ -101,7 +102,7 @@ class Meshtron(nn.Module):
         self.n_blocks = num_blocks
         self.embedding = InputEmbedding(embedding_size, dim)
         self.up_sample = LinearUpSample(shortening_factor[0], dim)
-        self.pos_emb = RoPEncoding(dim=dim, seq_len=seq_len)
+        self.pos_emb = RoPEncoding(dim=dim, seq_len=seq_len, theta=rope_theta)
         self.use_conditioning = use_conditioning
         self.tokenizer = tokenizer
         self.point_cloud_conditioning = ConditioningEncoder(
@@ -131,7 +132,7 @@ class Meshtron(nn.Module):
                 dropout,
                 MultiHeadFlashAttention(dim, n_heads, dropout, False, block_size),
                 FeedForwardNetwork(dim, d_ff, dropout, SwiGLU),
-                conditioning_flag= use_conditioning and (i % condition_every_n_layers == 0)
+                conditioning_flag= use_conditioning and (i % condition_every_n_layers == 0) and i is not 0
             )
             for i in range(n_pre_post_blocks)
         ])
@@ -154,54 +155,54 @@ class Meshtron(nn.Module):
                         dropout, 
                         MultiHeadFlashAttention(dim, n_heads, dropout, False, block_size),
                         FeedForwardNetwork(dim, d_ff, dropout, SwiGLU),
-                        conditioning_flag= use_conditioning and (i % condition_every_n_layers == 0)
+                        conditioning_flag= use_conditioning and (i % condition_every_n_layers == 0) and i is not 0
             ) for i in range(n_pre_post_blocks)
         ])
 
         self.out_proj = ProjectionLayer(dim, embedding_size)
         
 
-    def forward(self, x, conditioning_data, face_count, quad_ratio, mask):
+    def forward(self, data, conditioning_data, face_count, quad_ratio, mask):
 
-        def run_block(block: Transformer):
-            cond = self.point_cloud_conditioning(conditioning_data, face_count, quad_ratio) if block.conditioning_flag else None
-            x = block(x=x, conditions=cond, mask=mask, rolling_kv_cache = self.rolling_kv_cache)
+        #conditioning tensor
+        cond = self.point_cloud_conditioning(conditioning_data, face_count, quad_ratio)
+
+        def run_block(block: Transformer, data):
+            conditions = cond if block.conditioning_flag else None
+            x = block(x = data, conditions=conditions, mask=mask, rolling_kv_cache = self.rolling_kv_cache)
             return x
         
         skips = [] #holds skip connection values, used in upsampling
-        x = self.embedding(x)
-        x = self.pos_emb(x)
-
-        #conditioning tensor
-        cond= None
+        data = self.embedding(data)
+        data = self.pos_emb(data)
 
         # Pre valley block
         for block in self.pre_blocks:
-            x = run_block(block)
-        skips.append(x) # Appending residuals to be added later
+            data = run_block(block, data)
+        skips.append(data) # Appending residuals to be added later
 
         #Downsampling valley
         for layer in self.down_valley:
-            x = layer(x=x, conditions=cond, mask=mask)
-            skips.append(x)
+            data = layer(x=data, conditions=cond, mask=mask)
+            skips.append(data)
 
         #center layer of valley
-        x = self.center_layer(x = x, conditions = cond, mask = mask)
+        data = self.center_layer(x = data, conditions = cond, mask = mask)
 
         
         #upsampling valley
         for layer, skip in zip(self.up_valley, reversed(skips[1:])):
-            x = self.up_sample(x, skip)
-            x = layer(x=x, conditions=cond, mask=mask)
+            data = self.up_sample(data, skip)
+            data = layer(x=data, conditions=cond, mask=mask)
 
         #upsampling for the last vanilla block
-        x = self.up_sample(x, skips[0])
+        data = self.up_sample(data, skips[0])
 
         #last vanilla blocks
         for block in self.post_blocks:
-            x = run_block(block)
+            data = run_block(block, data)
         
-        return x
+        return data
         
     def project(self, x: torch.Tensor):
         return self.out_proj(x)
@@ -221,5 +222,6 @@ def get_model(model_params: ModelParams):
             condition_every_n_layers= model_params.condition_every_n_layers,
             use_kv_cache=model_params.use_kv_cache,
             rolling_max_seq=model_params.rolling_max_seq,
+            rope_theta=model_params.rope_theta,
             conditioning_params=model_params.conditioning_config
         )
