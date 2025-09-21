@@ -142,16 +142,16 @@ class Transformer(nn.Module):
         self.norm = LayerNormalization(f_dim)
         self.conditioning_flag = conditioning_flag
         if conditioning_flag:
-            self.residuals = nn.ModuleList(ResidualConnection(f_dim, dropout) for _ in range(3))
+            self.residuals = nn.ModuleList([ResidualConnection(f_dim, dropout) for _ in range(3)])
         else:
-            self.residuals = nn.ModuleList(ResidualConnection(f_dim, dropout) for _ in range(2))
+            self.residuals = nn.ModuleList([ResidualConnection(f_dim, dropout) for _ in range(2)])
 
         self.dropout = dropout
         self.attention = attention_block
         self.FFN = feed_forward_block
 
     def forward(self,*, x: torch.Tensor, conditions: torch.Tensor, mask: torch.Tensor, rolling_kv_cache: Optional[RollingKVCache] = None ):
-        x = self.residuals[0](x, lambda x: self.attention(x, x, x, mask, self.rolling_kv_cache))
+        x = self.residuals[0](x, lambda x: self.attention(x, x, x, mask, rolling_kv_cache))
         if self.conditioning_flag:
             x = self.residuals[1](x, lambda x: self.attention(x, conditions, conditions, mask, rolling_kv_cache))
             x = self.residuals[2](x, self.FFN)
@@ -187,7 +187,7 @@ class Layer(nn.Module):
                         dropout,
                         MultiHeadFlashAttention(dim, n_heads, dropout, False, block_size),
                         FeedForwardNetwork(dim, d_ff, dropout, SwiGLU),
-                        conditioning_flag = use_conditioning and (i % condition_every_n_layers == 0),
+                        conditioning_flag = use_conditioning and (i % condition_every_n_layers == 0) and i is not 0,
                         )
             for i in range(num_blocks)
         ])
