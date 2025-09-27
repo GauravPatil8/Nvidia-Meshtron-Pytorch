@@ -151,9 +151,9 @@ class Transformer(nn.Module):
         self.FFN = feed_forward_block
 
     def forward(self,*, x: torch.Tensor, conditions: torch.Tensor, mask: torch.Tensor, rolling_kv_cache: Optional[RollingKVCache] = None ):
-        x = self.residuals[0](x, lambda x: self.attention(x, x, x, mask, rolling_kv_cache))
+        x = self.residuals[0](x, lambda x: self.attention(q=x,k= x,v= x, kv_cache=rolling_kv_cache))
         if self.conditioning_flag:
-            x = self.residuals[1](x, lambda x: self.attention(x, conditions, conditions, mask, rolling_kv_cache))
+            x = self.residuals[1](x, lambda x: self.attention(q=x,k= conditions,v= conditions, kv_cache=rolling_kv_cache))
             x = self.residuals[2](x, self.FFN)
         else:
             x = self.residuals[1](x, self.FFN)
@@ -187,7 +187,7 @@ class Layer(nn.Module):
                         dropout,
                         MultiHeadFlashAttention(dim, n_heads, dropout, False, block_size),
                         FeedForwardNetwork(dim, d_ff, dropout, SwiGLU),
-                        conditioning_flag = use_conditioning and (i % condition_every_n_layers == 0) and i is not 0,
+                        conditioning_flag = use_conditioning and (i % condition_every_n_layers == 0) and i != 0,
                         )
             for i in range(num_blocks)
         ])

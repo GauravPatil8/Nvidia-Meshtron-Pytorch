@@ -210,3 +210,4 @@ __marimo__/
 #project specific
 artifacts/
 todo.txt
+env_meshtron

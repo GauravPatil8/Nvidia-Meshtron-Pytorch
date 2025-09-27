@@ -75,10 +75,10 @@ class ConfigurationManager:
     def dataloader_config():
         return DataLoaderConfig(
             train_ratio=0.9,
-            batch_size=10,
+            batch_size=1,
             num_workers=0,
             shuffle=True,
-            pin_memory=False,
+            pin_memory=True,
             persistent_workers=False
         )
     @staticmethod 

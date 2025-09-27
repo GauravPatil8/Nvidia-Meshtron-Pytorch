@@ -19,8 +19,8 @@ class RollingKVCache:
 
     def clear(self):
         self.cache = {
-            "k": [torch.zeros(0, self.num_heads, self.head_dim, device=self.device) for _ in range(self.num_layers)],
-            "v": [torch.zeros(0, self.num_heads, self.head_dim, device=self.device) for _ in range(self.num_layers)]
+            "k": [torch.zeros(0, self.num_heads, self.head_dim) for _ in range(self.num_layers)],
+            "v": [torch.zeros(0, self.num_heads, self.head_dim) for _ in range(self.num_layers)]
         }
 
     def update(self, layer_idx, k_new, v_new):

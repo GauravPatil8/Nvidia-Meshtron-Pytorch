@@ -94,11 +94,11 @@ class FlashAttention(nn.Module):
 
         
         # Optional: store attention weights if requested
-        if return_softmax:
-            attn_weights = torch.zeros(
-                batch_size, num_heads, seq_len, seq_len, 
-                device=q.device, dtype=q.dtype
-            )
+        # if return_softmax:
+        #     attn_weights = torch.zeros(
+        #         batch_size, num_heads, seq_len, seq_len, 
+        #         device=q.device, dtype=q.dtype
+        #     )
         
         for i in range(num_q_blocks):
             # Query block indices
@@ -124,8 +124,8 @@ class FlashAttention(nn.Module):
                 kv_end = min((j + 1) * self.block_size, seq_len)
                 
                 # Skip blocks that are masked out in causal attention
-                if causal and kv_start > q_end - 1:
-                    break
+                # if causal > q_end - 1:
+                #     break
                 
                 # Get key-value blocks
                 k_block = k[:, :, kv_start:kv_end]
@@ -235,7 +235,7 @@ class MultiHeadFlashAttention(nn.Module):
         q: torch.Tensor,
         k: torch.Tensor,
         v: torch.Tensor,
-        causal: bool = False,
+        causal: bool = True,
         return_attention: bool = False,
         kv_cache: Optional[RollingKVCache] = None,
         layer_idx: Optional[int] = None
