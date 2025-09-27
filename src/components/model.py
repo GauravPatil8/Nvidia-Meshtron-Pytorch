@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from src.components.Attention import MultiHeadFlashAttention
+from src.components.Attention import MultiHeadAttention
 from src.components.PerceiverEncoder import ConditioningEncoder
 from src.components.HourglassTransformer import (
     Transformer,
@@ -130,7 +130,7 @@ class Meshtron(nn.Module):
             Transformer(
                 dim,
                 dropout,
-                MultiHeadFlashAttention(dim, n_heads, dropout, False, block_size),
+                MultiHeadAttention(dim, n_heads, dropout),
                 FeedForwardNetwork(dim, d_ff, dropout, SwiGLU),
                 conditioning_flag= use_conditioning and (i % condition_every_n_layers == 0) and i != 0
             )
@@ -153,7 +153,7 @@ class Meshtron(nn.Module):
         self.post_block = nn.ModuleList([
             Transformer(dim, 
                         dropout, 
-                        MultiHeadFlashAttention(dim, n_heads, dropout, False, block_size),
+                        MultiHeadAttention(dim, n_heads, dropout),
                         FeedForwardNetwork(dim, d_ff, dropout, SwiGLU),
                         conditioning_flag= use_conditioning and (i % condition_every_n_layers == 0) and i != 0
             ) for i in range(n_pre_post_blocks)
