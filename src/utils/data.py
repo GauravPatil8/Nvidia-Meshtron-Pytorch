@@ -189,5 +189,5 @@ def set_zero_vector(points: torch.Tensor, rate: float, size: int):
     k = int(n_points * rate)
     indices = torch.randperm(n_points)[:k]
     points[indices] = torch.zeros(size)
-    return points.to(dtype=torch.float32)
+    return points.to(dtype=torch.float16)
     

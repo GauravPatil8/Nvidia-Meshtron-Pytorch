@@ -44,7 +44,7 @@ class Trainer(nn.Module):
             quad_ratio: Quad ratio information
             kv_cache: Optional RollingKVCache instance for inference
         """
-        decoder_input = torch.empty(1,1).fill_(self.tokentizer.SOS).to(dtype=torch.int32, device=self.device)
+        decoder_input = torch.empty(1,1).fill_(self.tokentizer.SOS.item()).to(dtype=torch.int16, device=self.device)
 
         while True:
             if decoder_input.size(1) == self.model_params.seq_len:
@@ -54,13 +54,13 @@ class Trainer(nn.Module):
             if self.model_params.use_kv_cache:
                 # Only process the new token (last token in decoder_input)
                 current_token = decoder_input[:, -1:]
-                decoder_mask = causal_mask(1).to(dtype=torch.int32, device=self.device)
+                decoder_mask = causal_mask(1).to(dtype=torch.long, device=self.device)
                 
                 out = self.model(current_token, point_cloud, face_count, quad_ratio, 
                             decoder_mask)
             else:
                 # Without cache, process entire sequence
-                decoder_mask = causal_mask(decoder_input.size(1)).to(dtype=torch.int32, device=self.device)
+                decoder_mask = causal_mask(decoder_input.size(1)).to(dtype=torch.int16, device=self.device)
                 out = self.model(decoder_input, point_cloud, face_count, quad_ratio, decoder_mask)
 
             prob = self.model.project(out[:, -1])
@@ -153,11 +153,11 @@ class Trainer(nn.Module):
                 # print(target.size())
                 # print("-"*100)
 
-
-                output = self.model(decoder_input, point_cloud, face_count, quad_ratio, decoder_mask)
-
                 
-                loss = self.loss_func(output.view(-1, self.tokentizer.vocab_size), target.view(-1))
+                output = self.model(decoder_input, point_cloud, face_count, quad_ratio, decoder_mask)
+                logits = self.model.project(output)
+                
+                loss = self.loss_func(logits.view(-1, self.tokentizer.vocab_size), target.view(-1))
                 batch_iter.set_postfix({"loss": f"{loss.item():6.3f}"})
 
                 loss.backward()

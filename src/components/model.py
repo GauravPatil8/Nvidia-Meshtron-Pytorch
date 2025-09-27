@@ -165,10 +165,9 @@ class Meshtron(nn.Module):
     def forward(self, data, conditioning_data, face_count, quad_ratio, mask):
 
         #conditioning tensor
-        print("running conditioning blocks")
 
         cond = self.point_cloud_conditioning(conditioning_data, face_count, quad_ratio)
-
+        cond = cond.to(dtype=torch.float16)
         def run_block(block: Transformer, data):
             conditions = cond if block.conditioning_flag else None
             x = block(x = data, conditions=conditions, mask=mask, rolling_kv_cache = self.rolling_kv_cache)
@@ -177,26 +176,24 @@ class Meshtron(nn.Module):
         skips = [] #holds skip connection values, used in upsampling
         data = self.embedding(data)
         data = self.pos_emb(data)
+        data = data.to(dtype=torch.float16)
+
 
         # Pre valley block
-        print("running pre blocks")
         for block in self.pre_blocks:
             data = run_block(block, data)
         skips.append(data) # Appending residuals to be added later
 
-        print("running down valley blocks")
 
         #Downsampling valley
         for layer in self.down_valley:
             data = layer(x=data, conditions=cond, mask=mask)
             skips.append(data)
 
-        print("running centre valley blocks")
 
         #center layer of valley
         data = self.center_layer(x = data, conditions = cond, mask = mask)
 
-        print("running up valley blocks")
         
         #upsampling valley
         for layer, skip in zip(self.up_valley, reversed(skips[1:])):
@@ -207,7 +204,7 @@ class Meshtron(nn.Module):
         data = self.up_sample(data, skips[0])
 
         #last vanilla blocks
-        for block in self.post_blocks:
+        for block in self.post_block:
             data = run_block(block, data)
         
         return data

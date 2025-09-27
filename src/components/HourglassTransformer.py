@@ -39,8 +39,7 @@ def parse_hierarchy(hierarchy: str):
 
 def SwiGLU(x: torch.Tensor):
     "SwiGLU activation function"
-
-    x1, x2 = x.split(2, dim=-1)
+    x1, x2 = x.chunk(2, dim=-1)
     return F.silu(x1) * x2
 
 class LinearUpSample(nn.Module):
@@ -69,9 +68,10 @@ class LinearDownSample(nn.Module):
         self.linear = nn.Linear(dim*shorten_factor, dim)
         
     def forward(self, x):
-        x = self.linear(x)
         b, s, _ = x.shape
         x = x.view(b, s // self.sf, self.dim*self.sf)
+        x = self.linear(x)
+        return x
     
 class InputEmbedding(nn.Module):
     def __init__(self, num_tokens: int, dim: int):
@@ -87,7 +87,7 @@ class FeedForwardNetwork(nn.Module):
     def __init__(self, dim:int, d_ff:int, dropout:float, activation):
         super().__init__()
         self.linear1 = nn.Linear(dim, 2 * d_ff) #for swiglu chunking
-        self.linear2 = nn.Linear(2 * d_ff, dim)
+        self.linear2 = nn.Linear(d_ff, dim)
         self.dropout = nn.Dropout(dropout)
         self.activation = activation
     
@@ -150,8 +150,9 @@ class Transformer(nn.Module):
         self.attention = attention_block
         self.FFN = feed_forward_block
 
-    def forward(self,*, x: torch.Tensor, conditions: torch.Tensor, mask: torch.Tensor, rolling_kv_cache: Optional[RollingKVCache] = None ):
-        x = self.residuals[0](x, lambda x: self.attention(q=x,kv= x))
+    def forward(self,*, x: torch.Tensor, conditions: Optional[torch.Tensor], mask: torch.Tensor, rolling_kv_cache: Optional[RollingKVCache] = None ):
+        x =x.to(dtype=torch.float16)
+        x = self.residuals[0](x, lambda x: self.attention(q=x,kv=x))
         if self.conditioning_flag:
             x = self.residuals[1](x, lambda x: self.attention(q=x,kv= conditions))
             x = self.residuals[2](x, self.FFN)
@@ -179,7 +180,7 @@ class Layer(nn.Module):
         self.sf = shortening_factor
         self.dropout = dropout
         self.norm = LayerNormalization(dim)
-        self.downsample = LinearDownSample(dim, self.sf)
+        self.downsample = LinearDownSample(self.sf, dim)
         self.residuals = ResidualConnection(dim, dropout)
         self.downflag = downflag
         self.blocks = nn.ModuleList([

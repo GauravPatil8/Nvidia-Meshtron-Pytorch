@@ -277,7 +277,7 @@ from flash_attn import flash_attn_func
 
 
 class MultiHeadAttention(nn.Module):
-    def __init__(self, d_model, num_heads, dropout=0.0,bias = True):
+    def __init__(self, d_model, num_heads, dropout=0.0, bias=True):
         super().__init__()
         assert d_model % num_heads == 0, "d_model must be divisible by num_heads"
 
@@ -286,32 +286,33 @@ class MultiHeadAttention(nn.Module):
         self.head_dim = d_model // num_heads
         self.dropout = dropout
 
-        self.q_proj = nn.Linear(d_model, d_model * 3, bias=bias)
-        self.kv_proj = nn.Linear(d_model, d_model * 3, bias=bias)
+        self.q_proj = nn.Linear(d_model, d_model, bias=bias, dtype=torch.float16)
+        self.kv_proj = nn.Linear(d_model, d_model * 2, bias=bias, dtype=torch.float16)
 
-        self.out_proj = nn.Linear(d_model, d_model, bias=bias)
+        self.out_proj = nn.Linear(d_model, d_model, bias=bias, dtype=torch.float16)
 
     def forward(self, q, kv):
+        q = q.to(dtype=torch.float16)
+        kv = kv.to(dtype=torch.float16)
         q_batch_size, q_seq_len, _ = q.shape
-        kv_batch_size, kv_seq_len, kv_dim = kv.shape
+        kv_batch_size, kv_seq_len, _ = kv.shape
 
         q = self.q_proj(q)
         kv = self.kv_proj(kv)
 
-        kv = kv.reshape(kv_batch_size, kv_seq_len, 2, self.num_heads, self.num_heads // kv_dim)
+        q = q.reshape(q_batch_size, q_seq_len, self.num_heads, self.head_dim)
+        kv = kv.reshape(kv_batch_size, kv_seq_len, 2, self.num_heads, self.head_dim)
 
-        k, v = kv.unbind(dim = 2)
+        k, v = kv.unbind(dim=2)
 
         output = flash_attn_func(
             q, k, v,
             dropout_p=self.dropout if self.training else 0.0,
-            softmax_scale=None,  # Uses 1/sqrt(head_dim) by default
-            causal=True,  # Set to True for causal masking (like in GPT)
+            softmax_scale=None,
+            causal=True,
         )
 
         output = output.reshape(q_batch_size, q_seq_len, self.d_model)
-        
-        # Output projection
         output = self.out_proj(output)
         
         return output

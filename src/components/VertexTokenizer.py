@@ -10,9 +10,9 @@ class VertexTokenizer:
         self.bins = bins
 
         #Special tokens
-        self.SOS = torch.tensor([bins], dtype=torch.int64)
-        self.EOS = torch.tensor([bins+1], dtype=torch.int64)
-        self.PAD = torch.tensor([bins+2], dtype=torch.int64) 
+        self.SOS = torch.tensor([bins], dtype=torch.int16)
+        self.EOS = torch.tensor([bins+1], dtype=torch.int16)
+        self.PAD = torch.tensor([bins+2], dtype=torch.int16) 
 
         self.vocab_size = bins + 3 # add 3 for special tokens
 

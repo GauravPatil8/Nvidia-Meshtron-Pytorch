@@ -13,7 +13,7 @@ class RoPEncoding(nn.Module):
         assert dim % 2 == 0, "Embedding dimension must be even"
 
 
-        pos = torch.arange(seq_len, dtype=torch.float32).unsqueeze(1)
+        pos = torch.arange(seq_len, dtype=torch.float16).unsqueeze(1)
 
         freqs = torch.exp(
             -torch.arange(0, dim, 2).float() * (math.log(theta) / dim)
