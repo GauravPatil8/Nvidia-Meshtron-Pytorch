@@ -26,7 +26,7 @@ class ConfigurationManager:
     def training_config():
         PROJECT_ROOT = get_root_folder()
         return TrainingConfig(
-            num_epochs=1,
+            num_epochs=2,
             learning_rate=0.01,
             label_smoothing= 0.1,
             model_folder=get_path(PROJECT_ROOT, "artifacts", "model"),

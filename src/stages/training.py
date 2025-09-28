@@ -27,8 +27,6 @@ class Trainer(nn.Module):
 
         model_params.tokenizer = self.tokentizer
 
-        model_params.use_kv_cache = True
-
         self.model = get_model(model_params).to(device=self.device)
 
         self.optimizer = torch.optim.Adam(self.model.parameters(), training_config.learning_rate, eps=1e-9)
@@ -45,7 +43,11 @@ class Trainer(nn.Module):
             quad_ratio: Quad ratio information
             kv_cache: Optional RollingKVCache instance for inference
         """
-        decoder_input = torch.empty(1,1).fill_(self.tokentizer.SOS.item()).to(dtype=torch.int16, device=self.device)
+        decoder_input = torch.empty(1,1).fill_(self.tokentizer.SOS.item()).to(dtype=torch.int64, device=self.device)
+        print("-"*100)
+        print(decoder_input)
+        print(decoder_input.shape)
+        print("-"*100)
 
         while True:
             if decoder_input.size(1) == self.model_params.seq_len:
@@ -61,18 +63,23 @@ class Trainer(nn.Module):
                             decoder_mask)
             else:
                 # Without cache, process entire sequence
-                decoder_mask = causal_mask(decoder_input.size(1)).to(dtype=torch.int16, device=self.device)
+                print("-"*100)
+                print("not using kv cache")
+                print("-"*100)
+                decoder_mask = causal_mask(decoder_input.size(1)).to(dtype=torch.int32, device=self.device)
                 out = self.model(decoder_input, point_cloud, face_count, quad_ratio, decoder_mask)
 
             prob = self.model.project(out[:, -1])
             _, next_token = torch.argmax(prob, dim=1)
 
             decoder_input = torch.cat(
-                [decoder_input, torch.empty(1,1).fill_(next_token.item()).to(device=self.device, dtype=torch.int16)],
-                dim=1,
+                [decoder_input, torch.empty(1,1).fill_(next_token.item()).to(device=self.device, dtype=torch.int64)],
+                dim=-1,
             )
-            
-            if next_token == self.tokentizer.EOS:
+            print("-"*100)
+            print(decoder_input)
+            print("-"*100)
+            if next_token == self.tokentizer.EOS.item():
                 break
 
         return decoder_input.squeeze(0)
@@ -146,7 +153,7 @@ class Trainer(nn.Module):
                 face_count = batch["face_count"].to(self.device)
                 target = batch["target"].to(self.device)
 
-                
+
                 output = self.model(decoder_input, point_cloud, face_count, quad_ratio, decoder_mask)
                 proj_out = self.model.project(output)
 

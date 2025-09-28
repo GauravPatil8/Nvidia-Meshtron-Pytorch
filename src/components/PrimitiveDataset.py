@@ -95,9 +95,9 @@ class PrimitiveDataset(Dataset):
         
         decoder_input = torch.cat(
             [
-                torch.tensor([self.SOS] * 9, dtype=torch.int16), #for preserving hourglass structure
+                torch.tensor([self.SOS] * 9, dtype=torch.int64), #for preserving hourglass structure
                 dec_input,
-                torch.tensor([self.PAD] * num_dec_tokens, dtype=torch.int16)
+                torch.tensor([self.PAD] * num_dec_tokens, dtype=torch.int64)
             ],
             dim=0
         )
@@ -105,8 +105,8 @@ class PrimitiveDataset(Dataset):
         target = torch.cat(
             [
                 dec_input,
-                torch.tensor([self.EOS] * 9, dtype=torch.int16), #for preserving hourglass structure
-                torch.tensor([self.PAD] * num_dec_tokens, dtype=torch.int16)
+                torch.tensor([self.EOS] * 9, dtype=torch.int64), #for preserving hourglass structure
+                torch.tensor([self.PAD] * num_dec_tokens, dtype=torch.int64)
             ],
             dim=0
         )
