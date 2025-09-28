@@ -1,3 +1,4 @@
+import os
 import torch
 import logging
 import torch.nn as nn
@@ -67,7 +68,7 @@ class Trainer(nn.Module):
             _, next_token = torch.argmax(prob, dim=1)
 
             decoder_input = torch.cat(
-                [decoder_input, torch.empty(1,1).fill_(next_token.item()).to(device=self.device, dtype=torch.int32)],
+                [decoder_input, torch.empty(1,1).fill_(next_token.item()).to(device=self.device, dtype=torch.int16)],
                 dim=1,
             )
             
@@ -144,20 +145,12 @@ class Trainer(nn.Module):
                 quad_ratio = batch["quad_ratio"].to(self.device)
                 face_count = batch["face_count"].to(self.device)
                 target = batch["target"].to(self.device)
-                # print("-"*100)
-                # print(decoder_input.size())
-                # print(decoder_mask.size())
-                # print(point_cloud.size())
-                # print(quad_ratio.size())
-                # print(face_count.size())
-                # print(target.size())
-                # print("-"*100)
 
                 
                 output = self.model(decoder_input, point_cloud, face_count, quad_ratio, decoder_mask)
-                logits = self.model.project(output)
-                
-                loss = self.loss_func(logits.view(-1, self.tokentizer.vocab_size), target.view(-1))
+                proj_out = self.model.project(output)
+
+                loss = self.loss_func(proj_out.view(-1, self.tokentizer.vocab_size), target.view(-1))
                 batch_iter.set_postfix({"loss": f"{loss.item():6.3f}"})
 
                 loss.backward()
@@ -178,7 +171,8 @@ class Trainer(nn.Module):
 
                 logger.info(f"Training iteration epoch: {epoch:02d}, Training accuracy: {train_acc}, Validation accuracy: {test_acc}, loss: {loss}")
                 
-                model_filename = get_weights_path(self.training_config, f"{epoch:02d}")
+                model_file_path = get_weights_path(self.training_config, f"{epoch:02d}")
+                old_model_file_path = get_weights_path(self.training_config, f"{epoch - 1:02d}")
 
                 torch.save(
                     {
@@ -187,5 +181,9 @@ class Trainer(nn.Module):
                         'optimizer_state_dict': self.optimizer.state_dict(),
                         'global_step': global_step
                     },
-                    model_filename
+                    model_file_path
                 )
+
+                #saving some memory
+                if os.path.exists(old_model_file_path):
+                    os.remove(old_model_file_path)
