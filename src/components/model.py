@@ -134,7 +134,7 @@ class Meshtron(nn.Module):
             Transformer(
                 dim,
                 dropout,
-                SlidingWindowAttention(dim, n_heads, window_size, dropout),
+                MultiHeadAttention(dim, n_heads, dropout),
                 FeedForwardNetwork(dim, d_ff, dropout, SwiGLU),
                 conditioning_flag= use_conditioning and (i % condition_every_n_layers == 0) and i != 0
             )
@@ -142,22 +142,25 @@ class Meshtron(nn.Module):
         ])
 
         self.down_valley, self.center_layer, self.up_valley = build_hourglass_valley(
-            dim,
-            n_heads,
-            block_size,
-            self.sf,
-            self.n_blocks,
-            d_ff,
-            dropout,
-            condition_every_n_layers,
-            use_conditioning,
+            dim=dim,
+            num_of_heads=n_heads,
+            block_size=block_size,
+            h_sfs=self.sf,
+            h_nl=self.n_blocks,
+            d_ff=d_ff,
+            training=training,
+            window_size=window_size,
+            dropout=dropout,
+            pad_token=tokenizer.PAD.item(),
+            condition_every_n_layers=condition_every_n_layers,
+            use_conditioning=use_conditioning,
             rolling_kv_cache=self.rolling_kv_cache
         )
                                              
         self.post_block = nn.ModuleList([
             Transformer(dim, 
                         dropout, 
-                        SlidingWindowAttention(dim, n_heads, window_size, dropout),
+                        MultiHeadAttention(dim, n_heads, dropout),
                         FeedForwardNetwork(dim, d_ff, dropout, SwiGLU),
                         conditioning_flag= use_conditioning and (i % condition_every_n_layers == 0) and i != 0
             ) for i in range(n_pre_post_blocks)
@@ -165,60 +168,41 @@ class Meshtron(nn.Module):
 
         self.out_proj = ProjectionLayer(dim, embedding_size)
         
-    def _pad_to_multiple(self, tensor, multiple, dim = -1, value = 0):
-        seq_len = tensor.shape[dim]
-        m = seq_len / multiple
-        if m.is_integer():
-            return tensor
-        remainder = math.ceil(m) * multiple - seq_len
-        pad_offset = (0,) * (-1 - dim) * 2
-        return F.pad(tensor, (*pad_offset, 0, remainder), value = value)
     
     def forward(self, data, conditioning_data, face_count, quad_ratio, mask):
 
         #conditioning tensor
+        cond = self.point_cloud_conditioning(conditioning_data, face_count, quad_ratio).to(dtype=torch.float16)
 
-        cond = self.point_cloud_conditioning(conditioning_data, face_count, quad_ratio)
-        cond = cond.to(dtype=torch.float16)
         def run_block(block: Transformer, data):
             conditions = cond if block.conditioning_flag else None
-            x = block(x = data, conditions=conditions, mask=mask, rolling_kv_cache = self.rolling_kv_cache)
-            return x
+            return block(x = data, conditions=conditions, mask=mask, rolling_kv_cache = self.rolling_kv_cache)
         
         skips = [] #holds skip connection values, used in upsampling
-        data = self._pad_to_multiple(tensor=data, multiple=self.sf, value=self.tokenizer.PAD.item())
-        
-        if mask is not None:
-            mask = self._pad_to_multiple(tensor=mask, multiple= self.sf,dim =-1, value= False)
 
         data = self.embedding(data)
         data = self.pos_emb(data)
-        data = data.to(dtype=torch.float16)
-
 
         # Pre valley block
         for block in self.pre_blocks:
             data = run_block(block, data)
         skips.append(data) # Appending residuals to be added later
 
-
         #Downsampling valley
         for layer in self.down_valley:
             data = layer(x=data, conditions=cond, mask=mask)
             skips.append(data)
 
-
         #center layer of valley
         data = self.center_layer(x = data, conditions = cond, mask = mask)
 
-        
         #upsampling valley
         for layer, skip in zip(self.up_valley, reversed(skips[1:])):
-            data = self.up_sample(data, skip)
+            data = self.up_sample(data) + skip
             data = layer(x=data, conditions=cond, mask=mask)
 
         #upsampling for the last vanilla block
-        data = self.up_sample(data, skips[0])
+        data = self.up_sample(data) + skip[0]
 
         #last vanilla blocks
         for block in self.post_block:

@@ -69,6 +69,7 @@ class TrainingConfig:
     learning_rate: float
     label_smoothing: float
     preload: str
+    val_after_every: int
 
 
 @dataclass

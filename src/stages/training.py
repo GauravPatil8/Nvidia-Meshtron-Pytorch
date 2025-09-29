@@ -1,6 +1,6 @@
 import os
 import torch
-import logging
+import numpy
 import torch.nn as nn
 from tqdm import tqdm
 from torch.optim.lr_scheduler import LambdaLR
@@ -111,27 +111,27 @@ class Trainer(nn.Module):
         expected = []
         predicted = []
 
-        total_correct = 0
-        total_tokens = 0
-
         with torch.no_grad():
             for batch in tqdm(self.test_dataloader):
+                decoder_input = batch["decoder_input"].to(self.device)
+                decoder_mask = batch["decoder_mask"].to(self.device)
                 point_cloud = batch["point_cloud"].to(self.device)
                 quad_ratio = batch["quad_ratio"].to(self.device)
                 face_count = batch["face_count"].to(self.device)
                 target = batch["target"].to(self.device)
 
-                out = self.greedy_decode(point_cloud, face_count, quad_ratio)
+                out = self.model(decoder_input, point_cloud, quad_ratio, face_count, decoder_mask)
+                probs = self.model.project(out)
 
+                tokens = torch.argmax(probs, dim=-1)
                 expected.append(target)
-                predicted.append(out)
+                predicted.append(tokens)
 
-                # Calculate accuracy - need to handle different sequence lengths
-                min_len = min(out.size(0), target.size(0))
-                total_correct += torch.sum(out[:min_len] == target[:min_len])
-                total_tokens += min_len
+        # Calculate accuracy - need to handle different sequence lengths
+        correct = (predicted == expected).sum().item()
+        total = expected.numel()  # Total number of elements
+        accuracy = correct / total
 
-        accuracy = total_correct / total_tokens
         return accuracy
 
 
@@ -182,33 +182,36 @@ class Trainer(nn.Module):
                 self.scheduler.step()
                 self.optimizer.zero_grad(set_to_none=True)
 
-                global_step += 1
-
                 #stats
                 pred = torch.argmax(output, dim=-1)
                 correct = torch.sum(pred == target).to(dtype=torch.float32)
                 total = torch.numel(target)
                 train_acc = correct / total
+            global_step += 1
 
-                #run validations
+            
+
+            if self.training_config.val_after_every % epoch == 0:
                 test_acc = self.validate()
 
                 logger.info(f"Training iteration epoch: {epoch:02d}, Training accuracy: {train_acc}, Validation accuracy: {test_acc}, loss: {loss}")
                 
-                model_file_path = get_weights_path(self.training_config, f"{epoch:02d}")
-                old_model_file_path = get_weights_path(self.training_config, f"{epoch - 1:02d}")
+            logger.info(f"Training iteration epoch: {epoch:02d}, Training accuracy: {train_acc}, loss: {loss}")
+            
+            model_file_path = get_weights_path(self.training_config, f"{epoch:02d}")
+            old_model_file_path = get_weights_path(self.training_config, f"{epoch - 1:02d}")
 
-                torch.save(
-                    {
-                        'epoch': epoch,
-                        'model_state_dict': self.model.state_dict(),
-                        'optimizer_state_dict': self.optimizer.state_dict(),
-                        'scheduler_state_dict': self.scheduler.state_dict(),
-                        'global_step': global_step
-                    },
-                    model_file_path
-                )
+            torch.save(
+                {
+                    'epoch': epoch,
+                    'model_state_dict': self.model.state_dict(),
+                    'optimizer_state_dict': self.optimizer.state_dict(),
+                    'scheduler_state_dict': self.scheduler.state_dict(),
+                    'global_step': global_step
+                },
+                model_file_path
+            )
 
-                #saving some memory
-                if os.path.exists(old_model_file_path):
-                    os.remove(old_model_file_path)
+            #saving some memory
+            if os.path.exists(old_model_file_path):
+                os.remove(old_model_file_path)

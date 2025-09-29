@@ -5,6 +5,18 @@ from typing import Optional
 import torch.nn.functional as F
 from src.components.RollingKV import RollingKVCache
 from src.components.Attention import MultiHeadAttention, SlidingWindowAttention
+
+DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+def pad_to_multiple(tensor, multiple, dim = -1, value = 0):
+        seq_len = tensor.shape[dim]
+        m = seq_len / multiple
+        if m.is_integer():
+            return tensor
+        remainder = math.ceil(m) * multiple - seq_len
+        pad_offset = (0,) * (-1 - dim) * 2
+        return F.pad(tensor, (*pad_offset, 0, remainder), value = value)
+
 def parse_hierarchy(hierarchy: str):
     """Parse hierarchy of the entire hourglass transformer.
 
@@ -47,55 +59,49 @@ class LinearUpSample(nn.Module):
         super().__init__()
         self.sf = shorten_factor
         self.dim = dim
+        
+        self.linear = nn.Linear(dim, shorten_factor * dim, device=DEVICE)
 
-        self.linear = nn.Linear(dim, shorten_factor * dim)
-
-    def forward(self, x, skip):
-        shift = self.sf - 1
-        x = F.pad(x, (0,0,shift, -shift), value=0.) #causal padding for preventing leak
-        x = self.linear(x)
+    def forward(self, x):
         b, s, _ = x.shape
-
-        x = x.view(b, s * self.sf, self.dim)
-        x = x + skip
-        return x
+        shift = self.sf - 1
+        x = F.pad(self.linear(x), (0, 0, shift, -shift), value=0.) #causal padding for preventing leak
+        return x.view(b, s * self.sf, self.dim)
 
 class LinearDownSample(nn.Module):
-    def __init__(self, shorten_factor: int, dim: int):
+    def __init__(self, shorten_factor: int, dim: int, pad_token:int):
         super().__init__()
         self.sf = shorten_factor
         self.dim = dim
-        self.linear = nn.Linear(dim*shorten_factor, dim)
-        
+        self.linear = nn.Linear(dim*shorten_factor, dim, device=DEVICE)
+        self.pad_token = pad_token
+
     def forward(self, x):
         b, s, _ = x.shape
-        x = x.view(b, s // self.sf, self.dim*self.sf)
-        x = self.linear(x)
-        return x
+        x = pad_to_multiple(x, self.sf, dim=-1, value=self.pad_token)
+        return self.linear(x.view(b, s // self.sf, self.dim*self.sf))
     
 class InputEmbedding(nn.Module):
     def __init__(self, num_tokens: int, dim: int):
         super().__init__()
         self.num_tokens = num_tokens 
         self.dim = dim
-        self.embedding = nn.Embedding(num_tokens, dim)
+        self.embedding = nn.Embedding(num_tokens, dim, device=DEVICE)
+        self.scale = math.sqrt(dim)
 
     def forward(self, x):
-        return self.embedding(x) * math.sqrt(self.dim)
+        return self.embedding(x).mul_(self.scale)
     
 class FeedForwardNetwork(nn.Module):
     def __init__(self, dim:int, d_ff:int, dropout:float, activation):
         super().__init__()
-        self.linear1 = nn.Linear(dim, 2 * d_ff) #for swiglu chunking
-        self.linear2 = nn.Linear(d_ff, dim)
+        self.linear1 = nn.Linear(dim, 2 * d_ff, device=DEVICE) #for swiglu chunking
+        self.linear2 = nn.Linear(d_ff, dim, device=DEVICE)
         self.dropout = nn.Dropout(dropout)
         self.activation = activation
     
     def forward(self, x):
-        x = self.linear1(x)
-        x = self.activation(x)
-        x = self.dropout(x)
-        return self.linear2(x)
+        return self.linear2(self.dropout(self.activation(self.linear1(x))))
 
 
 class LayerNormalization(nn.Module):
@@ -125,7 +131,7 @@ class ResidualConnection(nn.Module):
 class ProjectionLayer(nn.Module):
     def __init__(self, dim, num_tokens):
         super().__init__()
-        self.proj = nn.Linear(dim, num_tokens)
+        self.proj = nn.Linear(dim, num_tokens, device=DEVICE)
 
     def forward(self, x):
         return self.proj(x)
@@ -174,21 +180,23 @@ class Layer(nn.Module):
                  d_ff: int,
                  training: bool,
                  window_size:int,
+                 pad_token:int, 
                  downflag: bool = False,
                  condition_every_n_layers: bool = False,
                  use_conditioning:bool = False,
-                 rolling_kv_cache: Optional[RollingKVCache] = None):
+                 rolling_kv_cache: Optional[RollingKVCache] = None
+                 ):
         super().__init__()
         self.sf = shortening_factor
         self.dropout = dropout
         self.norm = LayerNormalization(dim)
-        self.downsample = LinearDownSample(self.sf, dim)
+        self.downsample = LinearDownSample(self.sf, dim, pad_token=pad_token)
         self.residuals = ResidualConnection(dim, dropout)
         self.downflag = downflag
         self.blocks = nn.ModuleList([
             Transformer(dim,
                         dropout,
-                        SlidingWindowAttention(dim, n_heads, window_size, dropout),
+                        MultiHeadAttention(dim, n_heads, dropout),
                         FeedForwardNetwork(dim, d_ff, dropout, SwiGLU),
                         conditioning_flag = use_conditioning and (i % condition_every_n_layers == 0) and i != 0,
                         )
@@ -222,6 +230,7 @@ def build_hourglass_valley(
         training:bool,
         window_size:bool,
         dropout: float,
+        pad_token: int,
         condition_every_n_layers: bool,
         use_conditioning: bool,
         rolling_kv_cache: Optional[RollingKVCache] = None
@@ -229,7 +238,7 @@ def build_hourglass_valley(
     
     assert len(h_sfs) == len(h_nl) >= 1
 
-    down_layers = nn.ModuleList()
+    down_layers = nn.ModuleList([])
 
    #funneling down
     for sf, n_layers in list(zip(h_sfs, h_nl))[:-1]:
@@ -243,6 +252,7 @@ def build_hourglass_valley(
             d_ff=d_ff,
             training=training,
             window_size=window_size,
+            pad_token=pad_token,
             downflag=True,
             condition_every_n_layers=condition_every_n_layers,
             use_conditioning=use_conditioning,
@@ -261,6 +271,7 @@ def build_hourglass_valley(
             d_ff=d_ff,
             training=training,
             window_size=window_size,
+            pad_token=pad_token,
             downflag=True,
             condition_every_n_layers=condition_every_n_layers,
             use_conditioning=use_conditioning,
@@ -271,7 +282,7 @@ def build_hourglass_valley(
     #funneling up
     up_sf = [sf for sf in reversed(h_sfs)][1:]
     up_nl = [nl for nl in reversed(h_nl)][1:]
-    up_layers = nn.ModuleList()
+    up_layers = nn.ModuleList([])
     for sf, n_layers in reversed(list(zip(up_sf, up_nl))):
         layer = Layer(
             dim=dim,
@@ -283,6 +294,7 @@ def build_hourglass_valley(
             d_ff=d_ff,
             training=training,
             window_size=window_size,
+            pad_token=pad_token,
             downflag=False,
             condition_every_n_layers=condition_every_n_layers,
             use_conditioning=use_conditioning,

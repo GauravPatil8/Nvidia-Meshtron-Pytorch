@@ -32,6 +32,7 @@ class ConfigurationManager:
             model_folder=get_path(PROJECT_ROOT, "artifacts", "model"),
             model_basename="meshtron",
             preload="latest",
+            val_after_every=500,
         )
     
     @staticmethod
