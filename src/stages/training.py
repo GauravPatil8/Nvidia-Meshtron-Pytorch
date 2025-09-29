@@ -149,6 +149,7 @@ class Trainer(nn.Module):
             self.model.load_state_dict(state["model_state_dict"])
             initial_epoch  = state["epoch"] + 1
             self.optimizer.load_state_dict(state['optimizer_state_dict'])
+            self.scheduler.load_state_dict(state["scheduler_state_dict"])
             global_step = state['global_step']
             del state
         else:
@@ -202,6 +203,7 @@ class Trainer(nn.Module):
                         'epoch': epoch,
                         'model_state_dict': self.model.state_dict(),
                         'optimizer_state_dict': self.optimizer.state_dict(),
+                        'scheduler_state_dict': self.scheduler.state_dict(),
                         'global_step': global_step
                     },
                     model_file_path
