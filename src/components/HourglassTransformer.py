@@ -4,7 +4,7 @@ import torch.nn as nn
 from typing import Optional
 import torch.nn.functional as F
 from src.components.RollingKV import RollingKVCache
-from src.components.Attention import MultiHeadAttention
+from src.components.Attention import MultiHeadAttention, SlidingWindowAttention
 def parse_hierarchy(hierarchy: str):
     """Parse hierarchy of the entire hourglass transformer.
 
@@ -134,7 +134,7 @@ class Transformer(nn.Module):
     def __init__(self, 
                  f_dim: int, 
                  dropout: float,
-                 attention_block: MultiHeadAttention,
+                 attention_block: MultiHeadAttention | SlidingWindowAttention,
                  feed_forward_block: FeedForwardNetwork,
                  conditioning_flag: bool = False,
                  ):
@@ -152,9 +152,9 @@ class Transformer(nn.Module):
 
     def forward(self,*, x: torch.Tensor, conditions: Optional[torch.Tensor], mask: torch.Tensor, rolling_kv_cache: Optional[RollingKVCache] = None ):
         x =x.to(dtype=torch.float16)
-        x = self.residuals[0](x, lambda x: self.attention(q=x,kv=x))
+        x = self.residuals[0](x, lambda x: self.attention(q=x,k=x, v=x, mask=mask))
         if self.conditioning_flag:
-            x = self.residuals[1](x, lambda x: self.attention(q=x,kv= conditions))
+            x = self.residuals[1](x, lambda x: self.attention(q=x,k= conditions, v=conditions, mask=mask))
             x = self.residuals[2](x, self.FFN)
         else:
             x = self.residuals[1](x, self.FFN)
@@ -172,6 +172,8 @@ class Layer(nn.Module):
                  block_size: int,
                  num_blocks:int,
                  d_ff: int,
+                 training: bool,
+                 window_size:int,
                  downflag: bool = False,
                  condition_every_n_layers: bool = False,
                  use_conditioning:bool = False,
@@ -186,7 +188,7 @@ class Layer(nn.Module):
         self.blocks = nn.ModuleList([
             Transformer(dim,
                         dropout,
-                        MultiHeadAttention(dim, n_heads, dropout),
+                        SlidingWindowAttention(dim, n_heads, window_size, dropout),
                         FeedForwardNetwork(dim, d_ff, dropout, SwiGLU),
                         conditioning_flag = use_conditioning and (i % condition_every_n_layers == 0) and i != 0,
                         )
@@ -217,6 +219,8 @@ def build_hourglass_valley(
         h_sfs: list[int],
         h_nl: list[int],
         d_ff: int,
+        training:bool,
+        window_size:bool,
         dropout: float,
         condition_every_n_layers: bool,
         use_conditioning: bool,
@@ -237,6 +241,8 @@ def build_hourglass_valley(
             block_size=block_size,
             num_blocks=n_layers,
             d_ff=d_ff,
+            training=training,
+            window_size=window_size,
             downflag=True,
             condition_every_n_layers=condition_every_n_layers,
             use_conditioning=use_conditioning,
@@ -253,6 +259,8 @@ def build_hourglass_valley(
             block_size=block_size,
             num_blocks=h_nl[-1],
             d_ff=d_ff,
+            training=training,
+            window_size=window_size,
             downflag=True,
             condition_every_n_layers=condition_every_n_layers,
             use_conditioning=use_conditioning,
@@ -273,6 +281,8 @@ def build_hourglass_valley(
             block_size=block_size,
             num_blocks=n_layers,
             d_ff=d_ff,
+            training=training,
+            window_size=window_size,
             downflag=False,
             condition_every_n_layers=condition_every_n_layers,
             use_conditioning=use_conditioning,

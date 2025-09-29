@@ -3,6 +3,7 @@ import torch
 import logging
 import torch.nn as nn
 from tqdm import tqdm
+from torch.optim.lr_scheduler import LambdaLR
 from src.utils.common import logger_init
 from src.components.model import get_model
 from src.components.PrimitiveDataset import get_dataloaders, causal_mask
@@ -29,10 +30,24 @@ class Trainer(nn.Module):
 
         self.model = get_model(model_params).to(device=self.device)
 
-        self.optimizer = torch.optim.Adam(self.model.parameters(), training_config.learning_rate, eps=1e-9)
+        self.optimizer = torch.optim.Adam(self.model.parameters(), training_config.learning_rate, eps=1e-9, weight_decay=1e-2)
+
+        self.total_steps = self.training_config.num_epochs * len(self.train_dataloader)
+
+        self.warmup_steps = 5000
+
+        self.scheduler = LambdaLR(self.optimizer, self._lr_lambda)
 
         self.loss_func = nn.CrossEntropyLoss(ignore_index=self.tokentizer.PAD, label_smoothing=training_config.label_smoothing).to(self.device)
 
+    def _lr_lambda(self, current_step: int):
+        if current_step < self.warmup_steps:
+            # linear warm-up
+            return float(current_step) / float(max(1, self.warmup_steps))
+        # cosine decay after warm-up
+        progress = float(current_step - self.warmup_steps) / float(max(1, self.total_steps - self.warmup_steps))
+        return 0.5 * (1.0 + torch.cos(torch.tensor(progress * 3.1415926535))) * (1 - 1e-5 / self.training_config.learning_rate) + (1e-5 / self.training_config.learning_rate)
+    
     def greedy_decode(self, point_cloud, face_count, quad_ratio):
         """
         Greedy decoding with rolling KV cache support.
@@ -43,7 +58,7 @@ class Trainer(nn.Module):
             quad_ratio: Quad ratio information
             kv_cache: Optional RollingKVCache instance for inference
         """
-        decoder_input = torch.empty(1,1).fill_(self.tokentizer.SOS.item()).to(dtype=torch.int64, device=self.device)
+        decoder_input = torch.empty(1,9).fill_(self.tokentizer.SOS.item()).to(dtype=torch.int64, device=self.device)
         print("-"*100)
         print(decoder_input)
         print(decoder_input.shape)
@@ -163,6 +178,7 @@ class Trainer(nn.Module):
                 loss.backward()
 
                 self.optimizer.step()
+                self.scheduler.step()
                 self.optimizer.zero_grad(set_to_none=True)
 
                 global_step += 1

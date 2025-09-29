@@ -53,7 +53,9 @@ class ConfigurationManager:
             use_kv_cache = False,
             rolling_max_seq=72000,
             rope_theta=10000, #paper mentions 1M, but primitive sequences are small ~11k so using 10K is optimal. Use 1M for sequences > 32k
-            conditioning_config= ConfigurationManager.conditioning_config()        
+            conditioning_config= ConfigurationManager.conditioning_config(),
+            training=True,
+            window_size=1024        
         )
 
     @staticmethod

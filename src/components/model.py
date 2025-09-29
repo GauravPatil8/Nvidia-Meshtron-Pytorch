@@ -1,6 +1,8 @@
+import math
 import torch
 import torch.nn as nn
-from src.components.Attention import MultiHeadAttention
+import torch.nn.functional as F
+from src.components.Attention import MultiHeadAttention, SlidingWindowAttention
 from src.components.PerceiverEncoder import ConditioningEncoder
 from src.components.HourglassTransformer import (
     Transformer,
@@ -66,6 +68,8 @@ class Meshtron(nn.Module):
                  rolling_max_seq: int,
                  rope_theta: int,
                  conditioning_params: ConditioningConfig,
+                 training: bool,
+                 window_size: int
                  ):
         """
             Initialize Meshtron Model
@@ -130,7 +134,7 @@ class Meshtron(nn.Module):
             Transformer(
                 dim,
                 dropout,
-                MultiHeadAttention(dim, n_heads, dropout),
+                SlidingWindowAttention(dim, n_heads, window_size, dropout),
                 FeedForwardNetwork(dim, d_ff, dropout, SwiGLU),
                 conditioning_flag= use_conditioning and (i % condition_every_n_layers == 0) and i != 0
             )
@@ -153,7 +157,7 @@ class Meshtron(nn.Module):
         self.post_block = nn.ModuleList([
             Transformer(dim, 
                         dropout, 
-                        MultiHeadAttention(dim, n_heads, dropout),
+                        SlidingWindowAttention(dim, n_heads, window_size, dropout),
                         FeedForwardNetwork(dim, d_ff, dropout, SwiGLU),
                         conditioning_flag= use_conditioning and (i % condition_every_n_layers == 0) and i != 0
             ) for i in range(n_pre_post_blocks)
@@ -161,7 +165,15 @@ class Meshtron(nn.Module):
 
         self.out_proj = ProjectionLayer(dim, embedding_size)
         
-
+    def _pad_to_multiple(self, tensor, multiple, dim = -1, value = 0):
+        seq_len = tensor.shape[dim]
+        m = seq_len / multiple
+        if m.is_integer():
+            return tensor
+        remainder = math.ceil(m) * multiple - seq_len
+        pad_offset = (0,) * (-1 - dim) * 2
+        return F.pad(tensor, (*pad_offset, 0, remainder), value = value)
+    
     def forward(self, data, conditioning_data, face_count, quad_ratio, mask):
 
         #conditioning tensor
@@ -174,6 +186,11 @@ class Meshtron(nn.Module):
             return x
         
         skips = [] #holds skip connection values, used in upsampling
+        data = self._pad_to_multiple(tensor=data, multiple=self.sf, value=self.tokenizer.PAD.item())
+        
+        if mask is not None:
+            mask = self._pad_to_multiple(tensor=mask, multiple= self.sf,dim =-1, value= False)
+
         data = self.embedding(data)
         data = self.pos_emb(data)
         data = data.to(dtype=torch.float16)
@@ -228,5 +245,7 @@ def get_model(model_params: ModelParams):
             use_kv_cache=model_params.use_kv_cache,
             rolling_max_seq=model_params.rolling_max_seq,
             rope_theta=model_params.rope_theta,
-            conditioning_params=model_params.conditioning_config
+            conditioning_params=model_params.conditioning_config,
+            training=model_params.training,
+            window_size=model_params.window_size,
         )

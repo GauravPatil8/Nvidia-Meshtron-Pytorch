@@ -58,6 +58,8 @@ class ModelParams:
     rolling_max_seq: int
     rope_theta: int
     conditioning_config: ConditioningConfig
+    training: bool
+    window_size: int
     
 @dataclass
 class TrainingConfig:
