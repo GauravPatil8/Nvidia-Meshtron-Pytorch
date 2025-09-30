@@ -19,7 +19,7 @@ class ConfigurationManager:
             root = get_path(PROJECT_ROOT, 'artifacts'),
             dataset_storage_dir = get_path(PROJECT_ROOT, 'artifacts', 'dataset'),
             meshes = get_path(PROJECT_ROOT, 'mesh'),
-            dataset_len = 50
+            dataset_len = 10000
         )
     
     @staticmethod
