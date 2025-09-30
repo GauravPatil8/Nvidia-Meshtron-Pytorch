@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from src.components.Attention import MultiHeadAttention, SlidingWindowAttention
-from src.components.PerceiverEncoder import ConditioningEncoder
+from src.components.PerceiverEncoder import get_encoder
 from src.components.HourglassTransformer import (
     Transformer,
     InputEmbedding,
@@ -109,27 +109,7 @@ class Meshtron(nn.Module):
         self.pos_emb = RoPEncoding(dim=dim, seq_len=seq_len, theta=rope_theta)
         self.use_conditioning = use_conditioning
         self.tokenizer = tokenizer
-        self.point_cloud_conditioning = ConditioningEncoder(
-            input_channels=conditioning_params.input_channels,
-            input_axis=conditioning_params.input_axis,
-            num_freq_bands=conditioning_params.num_freq_bands,
-            max_freq=conditioning_params.max_freq,
-            depth=conditioning_params.depth,
-            num_latents=conditioning_params.num_latents,
-            latent_dim=conditioning_params.latent_dim,
-            cross_heads=conditioning_params.cross_heads,
-            latent_heads=conditioning_params.latent_heads,
-            cross_dim_head=conditioning_params.cross_dim_head,
-            latent_dim_head=conditioning_params.latent_dim_head,
-            num_classes=conditioning_params.num_classes,
-            attn_dropout=conditioning_params.attn_dropout,
-            ff_dropout=conditioning_params.ff_dropout,
-            weight_tie_layers=conditioning_params.weight_tie_layers,
-            fourier_encode_data=conditioning_params.fourier_encode_data,
-            self_per_cross_attn=conditioning_params.self_per_cross_attn,
-            final_classifier_head=conditioning_params.final_classifier_head,
-            dim_ffn=conditioning_params.dim_ffn
-        )
+        self.point_cloud_conditioning = get_encoder(conditioning_params=conditioning_params)
         self.pre_blocks = nn.ModuleList([
             Transformer(
                 dim,
