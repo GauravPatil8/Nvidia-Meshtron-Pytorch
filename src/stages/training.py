@@ -1,6 +1,6 @@
 import os
 import torch
-import numpy
+import math
 import torch.nn as nn
 from tqdm import tqdm
 from torch.optim.lr_scheduler import LambdaLR
@@ -46,7 +46,7 @@ class Trainer(nn.Module):
             return float(current_step) / float(max(1, self.warmup_steps))
         # cosine decay after warm-up
         progress = float(current_step - self.warmup_steps) / float(max(1, self.total_steps - self.warmup_steps))
-        return 0.5 * (1.0 + torch.cos(torch.tensor(progress * 3.1415926535))) * (1 - 1e-5 / self.training_config.learning_rate) + (1e-5 / self.training_config.learning_rate)
+        return 0.5 * (1.0 + math.cos(progress * math.pi)) * (1 - 1e-5 / self.training_config.learning_rate) + (1e-5 / self.training_config.learning_rate)
     
     def greedy_decode(self, point_cloud, face_count, quad_ratio):
         """
@@ -59,10 +59,6 @@ class Trainer(nn.Module):
             kv_cache: Optional RollingKVCache instance for inference
         """
         decoder_input = torch.empty(1,9).fill_(self.tokentizer.SOS.item()).to(dtype=torch.int64, device=self.device)
-        print("-"*100)
-        print(decoder_input)
-        print(decoder_input.shape)
-        print("-"*100)
 
         while True:
             if decoder_input.size(1) == self.model_params.seq_len:
@@ -78,9 +74,6 @@ class Trainer(nn.Module):
                             decoder_mask)
             else:
                 # Without cache, process entire sequence
-                print("-"*100)
-                print("not using kv cache")
-                print("-"*100)
                 decoder_mask = causal_mask(decoder_input.size(1)).to(dtype=torch.int32, device=self.device)
                 out = self.model(decoder_input, point_cloud, face_count, quad_ratio, decoder_mask)
 
@@ -91,9 +84,6 @@ class Trainer(nn.Module):
                 [decoder_input, torch.empty(1,1).fill_(next_token.item()).to(device=self.device, dtype=torch.int64)],
                 dim=-1,
             )
-            print("-"*100)
-            print(decoder_input)
-            print("-"*100)
             if next_token == self.tokentizer.EOS.item():
                 break
 
