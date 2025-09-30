@@ -75,7 +75,7 @@ class Meshtron(nn.Module):
             Initialize Meshtron Model
             Args:
                 dim (int): Primary embedding dimension for the model's hidden states.
-                embedding_size (int): number of the rows for quantized coordinate tokens and special tokens (typically 1024 + 2 or 128 + 2).
+                embedding_size (int): number of the rows for quantized coordinate tokens and special tokens (typically 1024 + 3 or 128 + 3).
                 n_heads (int): Number of attention heads in the main transformer layers.
                 attn_window_size (int): Size of the sliding attention window for local attention mechanisms.
                 d_ff (int): Hidden dimension of the feed-forward networks.

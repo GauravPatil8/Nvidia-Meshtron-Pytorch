@@ -47,48 +47,6 @@ class Trainer(nn.Module):
         # cosine decay after warm-up
         progress = float(current_step - self.warmup_steps) / float(max(1, self.total_steps - self.warmup_steps))
         return 0.5 * (1.0 + math.cos(progress * math.pi)) * (1 - 1e-5 / self.training_config.learning_rate) + (1e-5 / self.training_config.learning_rate)
-    
-    def greedy_decode(self, point_cloud, face_count, quad_ratio):
-        """
-        Greedy decoding with rolling KV cache support.
-        
-        Args:
-            point_cloud: Input point cloud data
-            face_count: Face count information  
-            quad_ratio: Quad ratio information
-            kv_cache: Optional RollingKVCache instance for inference
-        """
-        decoder_input = torch.empty(1,9).fill_(self.tokentizer.SOS.item()).to(dtype=torch.int64, device=self.device)
-
-        while True:
-            if decoder_input.size(1) == self.model_params.seq_len:
-                break
-
-            # For KV cache, we only need to process the last token
-            if self.model_params.use_kv_cache:
-                # Only process the new token (last token in decoder_input)
-                current_token = decoder_input[:, -1:]
-                decoder_mask = causal_mask(1).to(dtype=torch.long, device=self.device)
-                
-                out = self.model(current_token, point_cloud, face_count, quad_ratio, 
-                            decoder_mask)
-            else:
-                # Without cache, process entire sequence
-                decoder_mask = causal_mask(decoder_input.size(1)).to(dtype=torch.int32, device=self.device)
-                out = self.model(decoder_input, point_cloud, face_count, quad_ratio, decoder_mask)
-
-            prob = self.model.project(out[:, -1])
-            _, next_token = torch.argmax(prob, dim=1)
-
-            decoder_input = torch.cat(
-                [decoder_input, torch.empty(1,1).fill_(next_token.item()).to(device=self.device, dtype=torch.int64)],
-                dim=-1,
-            )
-            if next_token == self.tokentizer.EOS.item():
-                break
-
-        return decoder_input.squeeze(0)
-
 
     def validate(self):
         """
@@ -104,13 +62,13 @@ class Trainer(nn.Module):
         with torch.no_grad():
             for batch in tqdm(self.test_dataloader):
                 decoder_input = batch["decoder_input"].to(self.device)
-                decoder_mask = batch["decoder_mask"].to(self.device)
+                decoder_mask = None
                 point_cloud = batch["point_cloud"].to(self.device)
                 quad_ratio = batch["quad_ratio"].to(self.device)
                 face_count = batch["face_count"].to(self.device)
                 target = batch["target"].to(self.device)
 
-                out = self.model(decoder_input, point_cloud, quad_ratio, face_count, decoder_mask)
+                out = self.model(decoder_input, point_cloud, face_count, quad_ratio, decoder_mask)
                 probs = self.model.project(out)
 
                 tokens = torch.argmax(probs, dim=-1)
@@ -130,7 +88,8 @@ class Trainer(nn.Module):
         initial_epoch = 0
         global_step = 0
         logger = logger_init()
-
+        expected = []
+        predicted = []
         model_filename = get_latest_weights_path(self.training_config) if self.training_config.preload == "latest" else get_weights_path(self.training_config, epoch=self.training_config.preload)
 
         if model_filename:
@@ -153,7 +112,7 @@ class Trainer(nn.Module):
 
             for batch in batch_iter:
                 decoder_input = batch["decoder_input"].to(self.device)
-                decoder_mask = batch["decoder_mask"].to(self.device)
+                decoder_mask = None
                 point_cloud = batch["point_cloud"].to(self.device)
                 quad_ratio = batch["quad_ratio"].to(self.device)
                 face_count = batch["face_count"].to(self.device)
@@ -162,6 +121,9 @@ class Trainer(nn.Module):
 
                 output = self.model(decoder_input, point_cloud, face_count, quad_ratio, decoder_mask)
                 proj_out = self.model.project(output)
+                pred = torch.argmax(proj_out)
+                predicted.append(pred)
+                expected.append(target)
 
                 loss = self.loss_func(proj_out.view(-1, self.tokentizer.vocab_size), target.view(-1))
                 batch_iter.set_postfix({"loss": f"{loss.item():6.3f}"})
@@ -172,11 +134,12 @@ class Trainer(nn.Module):
                 self.scheduler.step()
                 self.optimizer.zero_grad(set_to_none=True)
 
-                #stats
-                pred = torch.argmax(output, dim=-1)
-                correct = torch.sum(pred == target).to(dtype=torch.float32)
-                total = torch.numel(target)
-                train_acc = correct / total
+                del decoder_input, decoder_mask, point_cloud, quad_ratio, face_count, target, output, proj_out, pred
+
+            #stats
+            correct = torch.sum(predicted == expected)
+            total = torch.numel(expected)
+            train_acc = correct / total
             global_step += 1
 
             

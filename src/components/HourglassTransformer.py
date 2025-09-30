@@ -156,7 +156,7 @@ class Transformer(nn.Module):
         self.attention = attention_block
         self.FFN = feed_forward_block
 
-    def forward(self,*, x: torch.Tensor, conditions: Optional[torch.Tensor], mask: torch.Tensor, rolling_kv_cache: Optional[RollingKVCache] = None ):
+    def forward(self,*, x: torch.Tensor, conditions: Optional[torch.Tensor], mask: Optional[torch.Tensor] = None, rolling_kv_cache: Optional[RollingKVCache] = None ):
         x =x.to(dtype=torch.float16)
         x = self.residuals[0](x, lambda x: self.attention(q=x,k=x, v=x, mask=mask))
         if self.conditioning_flag:
