@@ -40,6 +40,10 @@ class Trainer(nn.Module):
 
         self.loss_func = nn.CrossEntropyLoss(ignore_index=self.tokentizer.PAD, label_smoothing=training_config.label_smoothing).to(self.device)
 
+
+    def __str__(self):
+        return f"Training Stage f{Trainer}"
+    
     def _lr_lambda(self, current_step: int):
         if current_step < self.warmup_steps:
             # linear warm-up

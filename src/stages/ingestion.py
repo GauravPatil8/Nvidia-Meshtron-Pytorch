@@ -19,6 +19,9 @@ class Ingestion:
         self.dataset = config.dataset_storage_dir
         self.exists = True if os.path.exists(config.dataset_storage_dir) else False
 
+    def __str__(self):
+        return f"Ingestion Stage f{Ingestion}"
+    
     def run(self):
         logger = logger_init()
 
