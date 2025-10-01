@@ -59,14 +59,14 @@ class LinearUpSample(nn.Module):
         super().__init__()
         self.sf = shorten_factor
         self.dim = dim
-        
         self.linear = nn.Linear(dim, shorten_factor * dim, device=DEVICE)
 
     def forward(self, x):
         b, s, _ = x.shape
         shift = self.sf - 1
-        x = F.pad(self.linear(x), (0, 0, shift, -shift), value=0.) #causal padding for preventing leak
-        return x.view(b, s * self.sf, self.dim)
+        x = self.linear(x)
+        x = x.view(b, s * self.sf, self.dim)
+        return F.pad(x, (0, 0, shift, -shift), value=0.) #causal padding for preventing leak
 
 class LinearDownSample(nn.Module):
     def __init__(self, shorten_factor: int, dim: int, pad_token:int):
@@ -77,9 +77,10 @@ class LinearDownSample(nn.Module):
         self.pad_token = pad_token
 
     def forward(self, x):
-        b, s, _ = x.shape
-        x = pad_to_multiple(x, self.sf, dim=-1, value=self.pad_token)
-        return self.linear(x.view(b, s // self.sf, self.dim*self.sf))
+        b, _, _ = x.shape
+        x = pad_to_multiple(x, self.sf, dim=1, value=self.pad_token)
+        _, s_new, _ = x.shape
+        return self.linear(x.view(b, s_new // self.sf, self.dim*self.sf))
     
 class InputEmbedding(nn.Module):
     def __init__(self, num_tokens: int, dim: int):
