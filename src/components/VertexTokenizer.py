@@ -18,7 +18,7 @@ class VertexTokenizer:
 
     def quantize(self, sequence: torch.Tensor):
         "converts float values to discrete int bins"
-        return (torch.clamp(torch.floor((sequence + (self.box_dim / 2)) * (self.bins / self.box_dim)), 0, self.bins - 1)).to(dtype=torch.int32)
+        return (torch.clamp(torch.floor((sequence + (self.box_dim / 2)) * (self.bins / self.box_dim)), 0, self.bins - 1)).to(dtype=torch.int64)
 
     def dequantize(self, tokens: torch.Tensor):
         "converts int bins to float values"

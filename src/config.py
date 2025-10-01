@@ -19,7 +19,7 @@ class ConfigurationManager:
             root = get_path(PROJECT_ROOT, 'artifacts'),
             dataset_storage_dir = get_path(PROJECT_ROOT, 'artifacts', 'dataset'),
             meshes = get_path(PROJECT_ROOT, 'mesh'),
-            dataset_len = 10000
+            dataset_len = 50000
         )
     
     @staticmethod
@@ -68,10 +68,10 @@ class ConfigurationManager:
             point_cloud_size=8192,
             num_of_bins=128,
             bounding_box_dim=1.0,
-            std_points=0.1,
+            std_points=0.01,
             mean_points=0.0,
             mean_normals=0.0,
-            std_normals=0.3
+            std_normals=0.03
         )
     
     @staticmethod

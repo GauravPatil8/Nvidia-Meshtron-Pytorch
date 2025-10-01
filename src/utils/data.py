@@ -27,7 +27,7 @@ def load_obj(filepath):
 def random_transform(vertices):
     """Apply random rotation + independent scaling to vertices."""
     # Random independent scaling factors for x, y, z
-    scales = np.random.uniform(0.5, 2.0, size=3)
+    scales = np.random.uniform(0.9, 1.1, size=3)
     S = np.diag(scales)
 
     # Random rotation angles

@@ -38,7 +38,7 @@ class Trainer(nn.Module):
 
         self.scheduler = LambdaLR(self.optimizer, self._lr_lambda)
 
-        self.loss_func = nn.CrossEntropyLoss(ignore_index=self.tokenizer.PAD, label_smoothing=training_config.label_smoothing).to(self.device)
+        self.loss_func = nn.CrossEntropyLoss(ignore_index=self.tokenizer.PAD.item(), label_smoothing=training_config.label_smoothing).to(self.device)
 
 
     def __str__(self):
@@ -99,6 +99,8 @@ class Trainer(nn.Module):
         predicted = []
         model_filename = get_latest_weights_path(self.training_config) if self.training_config.preload == "latest" else get_weights_path(self.training_config, epoch=self.training_config.preload)
         loss= None
+        scaler = torch.amp.GradScaler()
+
         if model_filename:
             logger.info(f"Preloading model: {model_filename}")
             state = torch.load(model_filename)
@@ -106,12 +108,12 @@ class Trainer(nn.Module):
             initial_epoch  = state["epoch"] + 1
             self.optimizer.load_state_dict(state['optimizer_state_dict'])
             self.scheduler.load_state_dict(state["scheduler_state_dict"])
+            scaler.load_state_dict(state['scaler_state_dict'])
             global_step = state['global_step']
             del state
         else:
             logger.warning("No model to load, starting from sratch")
 
-        
         for epoch in range(initial_epoch, self.training_config.num_epochs):
             torch.cuda.empty_cache()
             self.model.train()
@@ -125,22 +127,25 @@ class Trainer(nn.Module):
                 face_count = batch["face_count"].to(self.device)
                 target = batch["target"].to(self.device)
 
-
-                output = self.model(decoder_input, point_cloud, face_count, quad_ratio, decoder_mask)
-                proj_out = self.model.project(output)
-                pred = torch.argmax(proj_out, dim = -1)
-                predicted.append(pred)
-                expected.append(target)
-
-                loss = self.loss_func(proj_out.view(-1, self.tokenizer.vocab_size), target.view(-1))
-                batch_iter.set_postfix({"loss": f"{loss.item():6.3f}"})
-
-                loss.backward()
-
-                self.optimizer.step()
-                self.scheduler.step()
                 self.optimizer.zero_grad(set_to_none=True)
 
+                with torch.amp.autocast():
+                    output = self.model(decoder_input, point_cloud, face_count, quad_ratio, decoder_mask)
+                    proj_out = self.model.project(output)
+                    
+                    predicted.append(pred)
+                    expected.append(target)
+
+                    loss = self.loss_func(proj_out.view(-1, self.tokenizer.vocab_size), target.view(-1))
+                    batch_iter.set_postfix({"loss": f"{loss.item():6.3f}"})
+
+                scaler.scale(loss).backward()
+                scaler.unscale_(optimizer=self.optimizer)
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
+                scaler.step(self.optimizer)
+                scaler.update()
+                self.scheduler.step()
+                global_step += 1
                 del decoder_input, decoder_mask, point_cloud, quad_ratio, face_count, target, output, proj_out, pred
 
             #stats
@@ -150,7 +155,7 @@ class Trainer(nn.Module):
                 correct = sum(predicted[i]==expected[i])
                 acc.append(correct/ len(predicted[i]))
             train_acc = sum(acc) / total_preds #avg accuracy
-            global_step += 1
+            
 
             
 
@@ -170,6 +175,7 @@ class Trainer(nn.Module):
                     'model_state_dict': self.model.state_dict(),
                     'optimizer_state_dict': self.optimizer.state_dict(),
                     'scheduler_state_dict': self.scheduler.state_dict(),
+                    'scaler_state_dict': self.scaler.state_dict(),
                     'global_step': global_step
                 },
                 model_file_path

@@ -4,24 +4,18 @@ from src.stages.training import Trainer
 from src.config import ConfigurationManager
 
 class Pipeline:
-    def __init__(self):
-        self._stages = list()
+    
+    @staticmethod
+    def run():
+        torch.cuda.empty_cache()
 
-        # Ingestion stage
-        # ingestion_stage = Ingestion(ConfigurationManager.ingestion_config())
-        # self._stages.append(ingestion_stage)
-
-        #Training stage
+        ingestion_stage = Ingestion(ConfigurationManager.ingestion_config())
+        ingestion_stage.run()
+            
         training_stage = Trainer(ConfigurationManager.training_config(),
                                  ConfigurationManager.model_params(),
                                  ConfigurationManager.dataset_config(),
                                  ConfigurationManager.dataloader_config())
-        self._stages.append(training_stage)
-
-    def run(self):
-        torch.cuda.empty_cache()
-        for stage in self._stages:
-            stage.run()
-            
+        training_stage.run()
 
 

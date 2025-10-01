@@ -66,14 +66,14 @@ class PrimitiveDataset(Dataset):
         mesh.vertices = vertices
 
         #sampling points on the surface of the bounded mesh (N, 3)
-        point_cloud, face_indices = trimesh.sample.sample_surface(mesh, self.num_points)
+        point_cloud, face_indices = trimesh.sample.sample_surface_even(mesh, self.num_points)
 
         #point cloud & point normals
         point_cloud = torch.from_numpy(point_cloud)
         point_normals = torch.from_numpy(mesh.face_normals[face_indices]).to(dtype=torch.float32)
 
         # augmentation
-        point_cloud = add_gaussian_noise(point_cloud, mean=self.mean_points, std=self.std_points) #according to paper: mean = 0.0, std = 0.1
+        point_cloud = add_gaussian_noise(point_cloud, mean=self.mean_points, std=self.std_points) #according to paper: mean = 0.0, std = 0.01
         point_normals = add_gaussian_noise(point_normals, mean=self.mean_normals, std=self.std_normals)
         point_normals = set_zero_vector(points=point_normals, rate=0.3, size=point_normals.shape[1])
 
@@ -113,7 +113,7 @@ class PrimitiveDataset(Dataset):
         return {
             "decoder_input":decoder_input,
             # "decoder_mask":(decoder_input != self.PAD).unsqueeze(0).int() & causal_mask(decoder_input.size(0)), # (1, seq_len) & (1, seq_len, seq_len),,
-            "target":target.to(dtype=torch.long),
+            "target":target.to(dtype=torch.int64),
             "point_cloud":points.to(dtype=torch.float32),
             "quad_ratio":torch.tensor(quad_ratio, dtype=torch.float32),
             "face_count":torch.tensor(face_count, dtype=torch.float32),
