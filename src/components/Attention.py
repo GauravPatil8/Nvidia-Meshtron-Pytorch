@@ -28,6 +28,9 @@ class MultiHeadAttention(nn.Module):
         k_batch_size, k_seq_len, _ = k.shape
         v_batch_size, v_seq_len, _ = v.shape
 
+        q = q.to(dtype = torch.float16) 
+        k = k.to(dtype = torch.float16) 
+        v = v.to(dtype = torch.float16) 
 
         q = self.q_proj(q)
         k = self.k_proj(k)
@@ -100,7 +103,9 @@ class SlidingWindowAttention(nn.Module):
         B, L, D = q.shape
         k_b, k_l, K_d = k.shape
         v_b, v_l, v_d = v.shape
-
+        q = q.to(dtype = torch.float16) 
+        k = k.to(dtype = torch.float16) 
+        v = v.to(dtype = torch.float16) 
         # Linear projections and reshape for multi-head attention
         q = self.q_proj(q).view(B, L, self.n_heads, self.d_head).transpose(1, 2)
         k = self.k_proj(k).view(k_b, k_l, self.n_heads, self.d_head).transpose(1, 2)

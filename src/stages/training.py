@@ -129,10 +129,10 @@ class Trainer(nn.Module):
 
                 self.optimizer.zero_grad(set_to_none=True)
 
-                with torch.amp.autocast():
+                with torch.amp.autocast(device_type= "cuda"):
                     output = self.model(decoder_input, point_cloud, face_count, quad_ratio, decoder_mask)
                     proj_out = self.model.project(output)
-                    
+                    pred = torch.argmax(proj_out, dim=-1)
                     predicted.append(pred)
                     expected.append(target)
 
@@ -154,7 +154,8 @@ class Trainer(nn.Module):
             for i in range(total_preds):
                 correct = sum(predicted[i]==expected[i])
                 acc.append(correct/ len(predicted[i]))
-            train_acc = sum(acc) / total_preds #avg accuracy
+            total_avg = sum(acc) #avg accuracy
+            train_acc = total_avg / total_preds 
             
 
             
