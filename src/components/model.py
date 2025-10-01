@@ -182,7 +182,7 @@ class Meshtron(nn.Module):
             data = layer(x=data, conditions=cond, mask=mask)
 
         #upsampling for the last vanilla block
-        data = self.up_sample(data) + skip[0]
+        data = self.up_sample(data) + skips[0]
 
         #last vanilla blocks
         for block in self.post_block:
