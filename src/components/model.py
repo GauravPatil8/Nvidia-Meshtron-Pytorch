@@ -153,7 +153,6 @@ class Meshtron(nn.Module):
 
         #conditioning tensor
         cond = self.point_cloud_conditioning(conditioning_data, face_count, quad_ratio).to(dtype=torch.float16)
-
         def run_block(block: Transformer, data):
             conditions = cond if block.conditioning_flag else None
             return block(x = data, conditions=conditions, mask=mask, rolling_kv_cache = self.rolling_kv_cache)

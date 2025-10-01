@@ -33,9 +33,9 @@ class MultiHeadAttention(nn.Module):
         k = self.k_proj(k)
         v = self.v_proj(v)
 
-        q = q.reshape(q_batch_size, q_seq_len, self.num_heads, self.head_dim)
-        k = k.reshape(k_batch_size, k_seq_len, self.num_heads, self.head_dim)
-        v = v.reshape(v_batch_size, v_seq_len, self.num_heads, self.head_dim)
+        q = q.view(q_batch_size, q_seq_len, self.num_heads, self.head_dim)
+        k = k.view(k_batch_size, k_seq_len, self.num_heads, self.head_dim)
+        v = v.view(v_batch_size, v_seq_len, self.num_heads, self.head_dim)
 
         output = flash_attn_func(
             q, k, v,
@@ -44,7 +44,7 @@ class MultiHeadAttention(nn.Module):
             causal=True
         )
 
-        output = output.reshape(q_batch_size, q_seq_len, self.d_model)
+        output = output.view(q_batch_size, q_seq_len, self.d_model)
         output = self.out_proj(output)
         
         return output

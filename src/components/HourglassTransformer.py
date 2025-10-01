@@ -59,7 +59,7 @@ class LinearUpSample(nn.Module):
         super().__init__()
         self.sf = shorten_factor
         self.dim = dim
-        self.linear = nn.Linear(dim, shorten_factor * dim, device=DEVICE)
+        self.linear = nn.Linear(dim, shorten_factor * dim, device=DEVICE, dtype = torch.float16)
 
     def forward(self, x):
         b, s, _ = x.shape
@@ -73,12 +73,13 @@ class LinearDownSample(nn.Module):
         super().__init__()
         self.sf = shorten_factor
         self.dim = dim
-        self.linear = nn.Linear(dim*shorten_factor, dim, device=DEVICE)
+        self.linear = nn.Linear(dim*shorten_factor, dim, device=DEVICE, dtype=torch.float16)
         self.pad_token = pad_token
 
     def forward(self, x):
         b, _, _ = x.shape
         x = pad_to_multiple(x, self.sf, dim=1, value=self.pad_token)
+        x=x.to(dtype = torch.float16)
         _, s_new, _ = x.shape
         return self.linear(x.view(b, s_new // self.sf, self.dim*self.sf))
     
@@ -96,13 +97,13 @@ class InputEmbedding(nn.Module):
 class FeedForwardNetwork(nn.Module):
     def __init__(self, dim:int, d_ff:int, dropout:float, activation):
         super().__init__()
-        self.linear1 = nn.Linear(dim, 2 * d_ff, device=DEVICE) #for swiglu chunking
-        self.linear2 = nn.Linear(d_ff, dim, device=DEVICE)
-        self.dropout = nn.Dropout(dropout)
+        self.linear1 = nn.Linear(dim, 2 * d_ff, device=DEVICE, dtype = torch.float16) #for swiglu chunking
+        self.linear2 = nn.Linear(d_ff, dim, device=DEVICE, dtype = torch.float16)
+        self.dropout = nn.Dropout(dropout, inplace = True)
         self.activation = activation
     
     def forward(self, x):
-        return self.linear2(self.dropout(self.activation(self.linear1(x))))
+        return self.linear2(self.dropout(self.activation(self.linear1(x.to(dtype = torch.float16)).to(dtype = torch.float16)).to(dtype = torch.float16)))
 
 
 class LayerNormalization(nn.Module):
@@ -123,8 +124,8 @@ class ResidualConnection(nn.Module):
     def __init__(self, f_dim: int, dropout: float):
         super().__init__()
         self.f_dim = f_dim
-        self.dropout = nn.Dropout(dropout)
-        self.norm = LayerNormalization(f_dim)
+        self.dropout = nn.Dropout(dropout, inplace = True)
+        self.norm = nn.LayerNorm(f_dim, bias = False, dtype=torch.float16)
 
     def forward(self, x, sublayer):
         return x + self.dropout(sublayer(self.norm(x)))
@@ -132,7 +133,7 @@ class ResidualConnection(nn.Module):
 class ProjectionLayer(nn.Module):
     def __init__(self, dim, num_tokens):
         super().__init__()
-        self.proj = nn.Linear(dim, num_tokens, device=DEVICE)
+        self.proj = nn.Linear(dim, num_tokens, device=DEVICE, dtype = torch.float16)
 
     def forward(self, x):
         return self.proj(x)

@@ -78,11 +78,11 @@ class ConfigurationManager:
     def dataloader_config():
         return DataLoaderConfig(
             train_ratio=0.9,
-            batch_size=1,
-            num_workers=0,
+            batch_size=2,
+            num_workers=2,
             shuffle=True,
             pin_memory=True,
-            persistent_workers=False
+            persistent_workers=True
         )
     @staticmethod 
     def conditioning_config():
@@ -95,15 +95,15 @@ class ConfigurationManager:
             num_latents = 1024,
             latent_dim = 1024,
             cross_heads = 1,
-            latent_heads = 8,
-            cross_dim_head = 128,
-            latent_dim_head = 128,
+            latent_heads = 16,
+            cross_dim_head = 64,
+            latent_dim_head = 64,
             num_classes = 1,
             attn_dropout = 0.1,
             ff_dropout= 0.2,
-            weight_tie_layers = 2,
+            weight_tie_layers = 6,
             fourier_encode_data = True,
-            self_per_cross_attn = 4,
+            self_per_cross_attn = 2,
             final_classifier_head = False,
             dim_ffn = 2816
         )

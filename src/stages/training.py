@@ -22,11 +22,11 @@ class Trainer(nn.Module):
 
         self.model_params = model_params
 
-        self.train_dataloader, self.test_dataloader, self.tokentizer = get_dataloaders(dataset_config, loader_config)
+        self.train_dataloader, self.test_dataloader, self.tokenizer = get_dataloaders(dataset_config, loader_config)
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-        model_params.tokenizer = self.tokentizer
+        model_params.tokenizer = self.tokenizer
 
         self.model = get_model(model_params).to(device=self.device)
 
@@ -38,7 +38,7 @@ class Trainer(nn.Module):
 
         self.scheduler = LambdaLR(self.optimizer, self._lr_lambda)
 
-        self.loss_func = nn.CrossEntropyLoss(ignore_index=self.tokentizer.PAD, label_smoothing=training_config.label_smoothing).to(self.device)
+        self.loss_func = nn.CrossEntropyLoss(ignore_index=self.tokenizer.PAD, label_smoothing=training_config.label_smoothing).to(self.device)
 
 
     def __str__(self):
@@ -98,7 +98,7 @@ class Trainer(nn.Module):
         expected = []
         predicted = []
         model_filename = get_latest_weights_path(self.training_config) if self.training_config.preload == "latest" else get_weights_path(self.training_config, epoch=self.training_config.preload)
-
+        loss= None
         if model_filename:
             logger.info(f"Preloading model: {model_filename}")
             state = torch.load(model_filename)
@@ -132,7 +132,7 @@ class Trainer(nn.Module):
                 predicted.append(pred)
                 expected.append(target)
 
-                loss = self.loss_func(pred.view(-1), target.view(-1))
+                loss = self.loss_func(proj_out.view(-1, self.tokenizer.vocab_size), target.view(-1))
                 batch_iter.set_postfix({"loss": f"{loss.item():6.3f}"})
 
                 loss.backward()
