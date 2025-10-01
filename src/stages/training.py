@@ -80,11 +80,14 @@ class Trainer(nn.Module):
                 predicted.append(tokens)
 
         # Calculate accuracy - need to handle different sequence lengths
-        correct = (predicted == expected).sum().item()
-        total = expected.numel()  # Total number of elements
-        accuracy = correct / total
+        acc=[]
+        total_preds = len(predicted)
+        for i in range(total_preds):
+            correct = sum(predicted[i]==expected[i])
+            acc.append(correct/ len(predicted[i]))
+        test_acc = sum(acc) / total_preds #avg accuracy
 
-        return accuracy
+        return test_acc
 
 
     def run(self):
@@ -125,11 +128,11 @@ class Trainer(nn.Module):
 
                 output = self.model(decoder_input, point_cloud, face_count, quad_ratio, decoder_mask)
                 proj_out = self.model.project(output)
-                pred = torch.argmax(proj_out)
+                pred = torch.argmax(proj_out, dim = -1)
                 predicted.append(pred)
                 expected.append(target)
 
-                loss = self.loss_func(proj_out.view(-1, self.tokentizer.vocab_size), target.view(-1))
+                loss = self.loss_func(pred.view(-1), target.view(-1))
                 batch_iter.set_postfix({"loss": f"{loss.item():6.3f}"})
 
                 loss.backward()
@@ -141,14 +144,17 @@ class Trainer(nn.Module):
                 del decoder_input, decoder_mask, point_cloud, quad_ratio, face_count, target, output, proj_out, pred
 
             #stats
-            correct = torch.sum(predicted == expected)
-            total = torch.numel(expected)
-            train_acc = correct / total
+            acc=[]
+            total_preds = len(predicted)
+            for i in range(total_preds):
+                correct = sum(predicted[i]==expected[i])
+                acc.append(correct/ len(predicted[i]))
+            train_acc = sum(acc) / total_preds #avg accuracy
             global_step += 1
 
             
 
-            if self.training_config.val_after_every % epoch == 0:
+            if epoch != 00 and self.training_config.val_after_every % epoch == 0:
                 test_acc = self.validate()
 
                 logger.info(f"Training iteration epoch: {epoch:02d}, Training accuracy: {train_acc}, Validation accuracy: {test_acc}, loss: {loss}")
