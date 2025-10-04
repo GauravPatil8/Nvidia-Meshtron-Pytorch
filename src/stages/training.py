@@ -36,7 +36,7 @@ class Trainer(nn.Module):
 
         self.warmup_steps = 5000
 
-        self.scheduler = LambdaLR(self.optimizer, self._lr_lambda)
+        # self.scheduler = LambdaLR(self.optimizer, self._lr_lambda)
 
         self.loss_func = nn.CrossEntropyLoss(ignore_index=self.tokenizer.PAD.item(), label_smoothing=training_config.label_smoothing).to(self.device)
 
@@ -99,7 +99,7 @@ class Trainer(nn.Module):
         predicted = []
         model_filename = get_latest_weights_path(self.training_config) if self.training_config.preload == "latest" else get_weights_path(self.training_config, epoch=self.training_config.preload)
         loss= None
-        scaler = torch.amp.GradScaler()
+        scaler = torch.amp.GradScaler(device=self.device)
 
         if model_filename:
             logger.info(f"Preloading model: {model_filename}")
@@ -140,11 +140,9 @@ class Trainer(nn.Module):
                     batch_iter.set_postfix({"loss": f"{loss.item():6.3f}"})
 
                 scaler.scale(loss).backward()
-                scaler.unscale_(optimizer=self.optimizer)
-                torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
                 scaler.step(self.optimizer)
                 scaler.update()
-                self.scheduler.step()
+                # self.scheduler.step()
                 global_step += 1
                 del decoder_input, decoder_mask, point_cloud, quad_ratio, face_count, target, output, proj_out, pred
 

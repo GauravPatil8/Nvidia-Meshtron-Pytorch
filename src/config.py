@@ -19,7 +19,7 @@ class ConfigurationManager:
             root = get_path(PROJECT_ROOT, 'artifacts'),
             dataset_storage_dir = get_path(PROJECT_ROOT, 'artifacts', 'dataset'),
             meshes = get_path(PROJECT_ROOT, 'mesh'),
-            dataset_len = 50000
+            dataset_len = 5
         )
     
     @staticmethod
@@ -28,7 +28,7 @@ class ConfigurationManager:
         return TrainingConfig(
             num_epochs=2,
             learning_rate=0.01,
-            label_smoothing= 0.1,
+            label_smoothing= 0.,
             model_folder=get_path(PROJECT_ROOT, "artifacts", "model"),
             model_basename="meshtron",
             preload="latest",
@@ -46,7 +46,7 @@ class ConfigurationManager:
             block_size=64,
             d_ff=2816,
             hierarchy="4@1 8@3 12@9 8@3 4@1",
-            dropout = 0.3,
+            dropout = 0.,
             seq_len = get_max_seq_len(get_path(PROJECT_ROOT, 'mesh')),
             tokenizer=None,
             use_conditioning = True,
@@ -77,7 +77,7 @@ class ConfigurationManager:
     @staticmethod
     def dataloader_config():
         return DataLoaderConfig(
-            train_ratio=0.9,
+            train_ratio=1.0,
             batch_size=2,
             num_workers=2,
             shuffle=True,
@@ -100,7 +100,7 @@ class ConfigurationManager:
             latent_dim_head = 64,
             num_classes = 1,
             attn_dropout = 0.1,
-            ff_dropout= 0.2,
+            ff_dropout= 0.0,
             weight_tie_layers = 6,
             fourier_encode_data = True,
             self_per_cross_attn = 2,
@@ -118,4 +118,5 @@ def get_latest_weights_path(config: TrainingConfig):
 
 def get_weights_path(config: TrainingConfig, epoch: str):
     PROJECT_ROOT = get_root_folder()
+    os.makedirs(get_path(PROJECT_ROOT, config.model_folder), exist_ok = True)
     return get_path(PROJECT_ROOT, config.model_folder, f"{config.model_basename}_{epoch}.pt")

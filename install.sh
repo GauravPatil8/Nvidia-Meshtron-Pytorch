@@ -15,3 +15,4 @@ echo "Installing package from link: $PACKAGE_LINK"
 pip install "$PACKAGE_LINK"
 
 echo "All installations completed successfully!"
+https://github.com/Dao-AILab/flash-attention/releases/download/v2.8.3/flash_attn-2.8.3+cu12torch2.8cxx11abiTRUE-cp311-cp311-linux_x86_64.whl

@@ -42,9 +42,9 @@ class Ingestion:
                     vertices, faces, header = load_obj(mesh_path)
 
                     for index in tqdm(range(instances_per_mesh), desc=f"Instances for {dir_name}", leave=False):
-                        transformed_vertices = random_transform(vertices)
+                        # transformed_vertices = random_transform(vertices)
 
-                        save_obj(get_path(dir_path, f"{index+1}.obj"), transformed_vertices, faces, header) #obj staring from index 1 [cube\1.obj, cube\2.obj]
+                        save_obj(get_path(dir_path, f"{index+1}.obj"), vertices, faces, header) #obj staring from index 1 [cube\1.obj, cube\2.obj]
             except Exception as e:
                 logger.info(f"An unexpected error occured during ingestion: {e}")
 
