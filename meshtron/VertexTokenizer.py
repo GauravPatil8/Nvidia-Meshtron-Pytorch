@@ -1,7 +1,8 @@
 import torch
 import trimesh
 import numpy as np
-from src.utils.data import extract_faces_bot_top, get_vertices, lex_sort_verts, normalize_mesh_to_bbox
+from pipeline.utils.data import extract_faces_bot_top, get_vertices, lex_sort_verts, normalize_mesh_to_bbox
+
 class VertexTokenizer:
 
     def __init__(self, bins: int, box_dim: float = 1.0):
@@ -10,9 +11,9 @@ class VertexTokenizer:
         self.bins = bins
 
         #Special tokens
-        self.SOS = torch.tensor([bins], dtype=torch.int16)
-        self.EOS = torch.tensor([bins+1], dtype=torch.int16)
-        self.PAD = torch.tensor([bins+2], dtype=torch.int16) 
+        self.SOS = torch.tensor([bins], dtype=torch.int64)
+        self.EOS = torch.tensor([bins+1], dtype=torch.int64)
+        self.PAD = torch.tensor([bins+2], dtype=torch.int64) 
 
         self.vocab_size = bins + 3 # add 3 for special tokens
 
@@ -21,7 +22,7 @@ class VertexTokenizer:
         return (torch.clamp(torch.floor((sequence + (self.box_dim / 2)) * (self.bins / self.box_dim)), 0, self.bins - 1)).to(dtype=torch.int64)
 
     def dequantize(self, tokens: torch.Tensor):
-        "converts int bins to float values"
+        "converts integer bins to float values"
         return (tokens.float() / (self.bins - 1)) * self.box_dim - (self.box_dim / 2)
     
     def encode(self,mesh: trimesh.Trimesh, vertices: torch.Tensor):
@@ -40,5 +41,15 @@ class VertexTokenizer:
 
         return sequence
     
-    def decode(self):
-        pass
+    def decode(self, x:  torch.Tensor):
+        """Converts integer tokens to corresponding float coordinates"""
+
+        coordinates = self.dequantize(x)
+
+        #Convert N*3 -> (N,3)
+        points = coordinates.view([-1, 3])
+
+        #convert Z Y X -> X Y Z
+        points = points[:, [2,1,0]]
+
+        return points

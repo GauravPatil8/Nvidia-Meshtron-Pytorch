@@ -3,10 +3,7 @@ import math
 import torch.nn as nn
 from typing import Optional
 import torch.nn.functional as F
-from src.components.RollingKV import RollingKVCache
-from src.components.Attention import MultiHeadAttention, SlidingWindowAttention
-
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+from meshtron.Attention import Attention
 
 def pad_to_multiple(tensor, multiple, dim = -1, value = 0):
         seq_len = tensor.shape[dim]
@@ -53,13 +50,13 @@ def SwiGLU(x: torch.Tensor):
     "SwiGLU activation function"
     x1, x2 = x.chunk(2, dim=-1)
     return F.silu(x1) * x2
-
+        
 class LinearUpSample(nn.Module):
     def __init__(self, shorten_factor: int, dim: int):
         super().__init__()
         self.sf = shorten_factor
         self.dim = dim
-        self.linear = nn.Linear(dim, shorten_factor * dim, device=DEVICE, dtype = torch.float32)
+        self.linear = nn.Linear(dim, shorten_factor * dim, dtype = torch.float32)
 
     def forward(self, x):
         b, s, _ = x.shape
@@ -73,7 +70,7 @@ class LinearDownSample(nn.Module):
         super().__init__()
         self.sf = shorten_factor
         self.dim = dim
-        self.linear = nn.Linear(dim*shorten_factor, dim, device=DEVICE, dtype=torch.float32)
+        self.linear = nn.Linear(dim*shorten_factor, dim, dtype=torch.float32)
         self.pad_token = pad_token
 
     def forward(self, x):
@@ -88,7 +85,7 @@ class InputEmbedding(nn.Module):
         super().__init__()
         self.num_tokens = num_tokens 
         self.dim = dim
-        self.embedding = nn.Embedding(num_tokens, dim, device=DEVICE)
+        self.embedding = nn.Embedding(num_tokens, dim)
         self.scale = math.sqrt(dim)
 
     def forward(self, x):
@@ -97,8 +94,8 @@ class InputEmbedding(nn.Module):
 class FeedForwardNetwork(nn.Module):
     def __init__(self, dim:int, d_ff:int, dropout:float, activation):
         super().__init__()
-        self.linear1 = nn.Linear(dim, 2 * d_ff, device=DEVICE, dtype = torch.float32) #for swiglu chunking
-        self.linear2 = nn.Linear(d_ff, dim, device=DEVICE, dtype = torch.float32)
+        self.linear1 = nn.Linear(dim, 2 * d_ff, dtype = torch.float32) #for swiglu chunking
+        self.linear2 = nn.Linear(d_ff, dim, dtype = torch.float32)
         self.dropout = nn.Dropout(dropout, inplace = True)
         self.activation = activation
     
@@ -133,32 +130,34 @@ class ResidualConnection(nn.Module):
 class ProjectionLayer(nn.Module):
     def __init__(self, dim, num_tokens):
         super().__init__()
-        self.proj = nn.Linear(dim, num_tokens, device=DEVICE, dtype = torch.float32)
+        self.proj = nn.Linear(dim, num_tokens, dtype = torch.float32)
 
     def forward(self, x):
         return self.proj(x)
 
 class Transformer(nn.Module):
     def __init__(self, 
-                 f_dim: int, 
+                 dim: int,
+                 num_heads:int,
+                 head_dim: int,
+                 dim_ff: int,
+                 window_size:int, 
                  dropout: float,
-                 attention_block: MultiHeadAttention | SlidingWindowAttention,
-                 feed_forward_block: FeedForwardNetwork,
                  conditioning_flag: bool = False,
                  ):
         super().__init__()
-        self.norm = LayerNormalization(f_dim)
+        self.norm = LayerNormalization(dim)
         self.conditioning_flag = conditioning_flag
         if conditioning_flag:
-            self.residuals = nn.ModuleList([ResidualConnection(f_dim, dropout) for _ in range(3)])
+            self.residuals = nn.ModuleList([ResidualConnection(dim, dropout) for _ in range(3)])
         else:
-            self.residuals = nn.ModuleList([ResidualConnection(f_dim, dropout) for _ in range(2)])
+            self.residuals = nn.ModuleList([ResidualConnection(dim, dropout) for _ in range(2)])
 
         self.dropout = dropout
-        self.attention = attention_block
-        self.FFN = feed_forward_block
+        self.attention = Attention(dim, num_heads, head_dim, window_size)
+        self.FFN = FeedForwardNetwork(dim, dim_ff, dropout, SwiGLU)
 
-    def forward(self,*, x: torch.Tensor, conditions: Optional[torch.Tensor], mask: Optional[torch.Tensor] = None, rolling_kv_cache: Optional[RollingKVCache] = None ):
+    def forward(self,*, x: torch.Tensor, conditions: Optional[torch.Tensor], mask: Optional[torch.Tensor] = None):
         x = self.residuals[0](x, lambda x: self.attention(q=x,k=x, v=x, mask=mask).to(dtype = torch.float32))
         if self.conditioning_flag:
             x = self.residuals[1](x, lambda x: self.attention(q=x,k= conditions, v=conditions, mask=mask).to(dtype = torch.float32))
@@ -176,16 +175,13 @@ class Layer(nn.Module):
                  shortening_factor: int,
                  dropout: float,
                  n_heads: int,
-                 block_size: int,
+                 head_dim: int,
                  num_blocks:int,
                  d_ff: int,
-                 training: bool,
                  window_size:int,
                  pad_token:int, 
                  downflag: bool = False,
-                 condition_every_n_layers: bool = False,
-                 use_conditioning:bool = False,
-                 rolling_kv_cache: Optional[RollingKVCache] = None
+                 condition_every_n_layers: bool = False
                  ):
         super().__init__()
         self.sf = shortening_factor
@@ -195,15 +191,16 @@ class Layer(nn.Module):
         self.residuals = ResidualConnection(dim, dropout)
         self.downflag = downflag
         self.blocks = nn.ModuleList([
-            Transformer(dim,
-                        dropout,
-                        MultiHeadAttention(dim, n_heads, dropout),
-                        FeedForwardNetwork(dim, d_ff, dropout, SwiGLU),
-                        conditioning_flag = use_conditioning and (i % condition_every_n_layers == 0) and i != 0,
-                        )
-            for i in range(num_blocks)
+            Transformer(
+                dim,
+                n_heads,
+                head_dim,
+                d_ff,
+                window_size.
+                dropout,
+                conditioning_flag=((i % condition_every_n_layers) == 0) and i != 0
+            ) for i in range(num_blocks)
         ])
-        self.rolling_kv_cache = rolling_kv_cache
 
     def forward(self, x, conditions, mask):
         
@@ -211,12 +208,12 @@ class Layer(nn.Module):
             x = self.downsample(x)
 
         #tranformer blocks   
-        def run_blocks(x, conditions, mask, rolling_kv_cache):
+        def run_blocks(x, conditions, mask):
             for block in self.blocks:
-                x = block(x = x, conditions = conditions, mask = mask, rolling_kv_cache = rolling_kv_cache)
+                x = block(x = x, conditions = conditions, mask = mask)
             return x
 
-        x = self.residuals(x, lambda x: run_blocks(x, conditions, mask, self.rolling_kv_cache))
+        x = self.residuals(x, lambda x: run_blocks(x, conditions, mask))
 
         return x
         
@@ -224,17 +221,14 @@ class Layer(nn.Module):
 def build_hourglass_valley(
         dim:int,
         num_of_heads: int,
-        block_size: int,
+        head_dim: int,
         h_sfs: list[int],
         h_nl: list[int],
         d_ff: int,
-        training:bool,
         window_size:bool,
         dropout: float,
         pad_token: int,
-        condition_every_n_layers: bool,
-        use_conditioning: bool,
-        rolling_kv_cache: Optional[RollingKVCache] = None
+        condition_every_n_layers: bool
     ) -> nn.ModuleList:
     
     assert len(h_sfs) == len(h_nl) >= 1
@@ -248,16 +242,13 @@ def build_hourglass_valley(
             shortening_factor=sf,
             dropout=dropout,
             n_heads=num_of_heads,
-            block_size=block_size,
+            head_dim=head_dim,
             num_blocks=n_layers,
             d_ff=d_ff,
-            training=training,
             window_size=window_size,
             pad_token=pad_token,
             downflag=True,
             condition_every_n_layers=condition_every_n_layers,
-            use_conditioning=use_conditioning,
-            rolling_kv_cache=rolling_kv_cache
         )
         down_layers.append(layer)
 
@@ -267,16 +258,13 @@ def build_hourglass_valley(
             shortening_factor=h_sfs[-1],
             dropout=dropout,
             n_heads=num_of_heads,
-            block_size=block_size,
+            head_dim=head_dim,
             num_blocks=h_nl[-1],
             d_ff=d_ff,
-            training=training,
             window_size=window_size,
             pad_token=pad_token,
             downflag=True,
             condition_every_n_layers=condition_every_n_layers,
-            use_conditioning=use_conditioning,
-            rolling_kv_cache=rolling_kv_cache
         )
 
 
@@ -290,16 +278,13 @@ def build_hourglass_valley(
             shortening_factor=sf,
             dropout=dropout,
             n_heads=num_of_heads,
-            block_size=block_size,
+            head_dim=head_dim,
             num_blocks=n_layers,
             d_ff=d_ff,
-            training=training,
             window_size=window_size,
             pad_token=pad_token,
             downflag=False,
             condition_every_n_layers=condition_every_n_layers,
-            use_conditioning=use_conditioning,
-            rolling_kv_cache=rolling_kv_cache
         )
         up_layers.append(layer)
 
