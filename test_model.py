@@ -1,0 +1,99 @@
+from meshtron.model import Meshtron
+from meshtron.encoder_conditioning import ConditioningEncoder
+from meshtron.VertexTokenizer import VertexTokenizer
+import torch
+import torch.nn as nn
+from tqdm import tqdm
+
+# --------------------------------------------------------------------------------------------
+#  This script is used to verify that the model runs end-to-end without errors.
+#  It uses randomly generated data to test forward and backward passes,
+#  but does NOT compute a meaningful loss or perform real training.
+#
+#  Purpose: Debug and ensure the model architecture, attention modules,
+#  and gradient flow work correctly before actual training.
+# --------------------------------------------------------------------------------------------
+
+torch.manual_seed(123)
+
+DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+LEARNING_RATE = 0.01
+print(DEVICE)
+tokenizer = VertexTokenizer(128, 1.0)
+
+
+NUM_EPOCHS = 5
+NUM_SAMPLES = 20
+SEQ_LEN = 9
+sub_input = torch.randint(0,131,[NUM_SAMPLES,SEQ_LEN], dtype=torch.int64)
+INPUT_DATA = torch.cat([torch.tensor([[tokenizer.SOS] * 9] * NUM_SAMPLES, dtype=torch.int64), sub_input], dim=-1).to(device=DEVICE)
+POINT_CLOUD = torch.randn([NUM_SAMPLES,128,6], dtype=torch.float32).to(device=DEVICE)
+QUAD_RATIO = torch.rand(NUM_SAMPLES,1).to(device=DEVICE, dtype=torch.float32)
+FACE_COUNT = torch.randint(5000, 15000, (NUM_SAMPLES,1)).to(device=DEVICE, dtype=torch.float32)
+TARGET = torch.cat([sub_input, torch.tensor([[tokenizer.EOS] * 9] * NUM_SAMPLES, dtype = torch.int64)],dim=-1).to(device=DEVICE)
+MASK = torch.tril(torch.ones((1, SEQ_LEN, SEQ_LEN))).type(torch.int64).to(device=DEVICE)
+
+def get_model():
+
+    encoder = ConditioningEncoder(
+                                input_channels= 6, 
+                                input_axis= 1,
+                                num_freq_bands=6,
+                                max_freq=10.,
+                                depth=8,
+                                num_latents=24,
+                                latent_dim=24,
+                                cross_heads=1,
+                                latent_heads=2,
+                                cross_dim_head=12,
+                                latent_dim_head=12,
+                                num_classes=1,
+                                attn_dropout=0.2,
+                                ff_dropout=0.1,
+                                weight_tie_layers=6,
+                                fourier_encode_data=True,
+                                self_per_cross_attn=2,
+                                final_classifier_head=False,
+                                dim_ffn=12
+                                )
+    return Meshtron(dim = 24, 
+                    embedding_size= 131,
+                    n_heads=2,
+                    head_dim=12,
+                    window_size= 3,
+                    d_ff=12,
+                    hierarchy="4@1 8@3 12@9 8@3 4@1",
+                    dropout=0.2,
+                    pad_token=tokenizer.PAD.item(),
+                    condition_every_n_layers=4,
+                    encoder=encoder,
+                    ).to(device=DEVICE)
+
+def train(model: Meshtron, tokenizer: VertexTokenizer):
+    model.train()
+    step = 0
+    optimizer = torch.optim.Adam(model.parameters(), LEARNING_RATE, eps=1e-9, weight_decay=1e-2)
+    loss_func = nn.CrossEntropyLoss(ignore_index=tokenizer.PAD.item(), label_smoothing=0.0).to(DEVICE)
+    torch.autograd.set_detect_anomaly(True)
+    for epoch in range(NUM_EPOCHS):
+        iter = tqdm(range(NUM_SAMPLES), desc=f"Processing epoch: {epoch+1:02d}")
+        for i in iter:
+            output = model(INPUT_DATA[i].unsqueeze(0), POINT_CLOUD[i].unsqueeze(-3), FACE_COUNT[i], QUAD_RATIO[i], MASK)
+            out_prob = model.project(output)
+            loss = loss_func(out_prob.view(-1, tokenizer.vocab_size), TARGET[i].view(-1))
+            iter.set_postfix({"loss": f"{loss.item():6.3f}"})
+            
+            loss.backward()
+            optimizer.step()
+            step+=1
+    
+    return loss.item(), step
+
+def main():
+    model = get_model()
+
+    loss, total_steps = train(model, tokenizer)
+    print(f"Model Trained successfully \n-The total steps are: {total_steps} \n-Loss: {loss}")
+
+if __name__ == '__main__':
+    main()
