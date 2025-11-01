@@ -4,6 +4,7 @@ from meshtron.VertexTokenizer import VertexTokenizer
 import torch
 import torch.nn as nn
 from tqdm import tqdm
+from torch.optim.lr_scheduler import LambdaLR, CosineAnnealingLR, SequentialLR
 
 # --------------------------------------------------------------------------------------------
 #  This script is used to verify that the model runs end-to-end without errors.
@@ -71,8 +72,24 @@ def get_model():
 
 def train(model: Meshtron, tokenizer: VertexTokenizer):
     model.train()
-    step = 0
+    g_step = 0
     optimizer = torch.optim.Adam(model.parameters(), LEARNING_RATE, eps=1e-9, weight_decay=1e-2)
+    warmup_scheduler = LambdaLR(
+        optimizer,
+        lr_lambda=lambda step: step / 15 if step < 15 else 1.0
+    )
+
+    cosine_scheduler = CosineAnnealingLR(
+        optimizer,
+        T_max=85,  # total_iters - warmup_iters
+        eta_min=0.0
+    )
+
+    scheduler = SequentialLR(
+        optimizer,
+        schedulers=[warmup_scheduler, cosine_scheduler],
+        milestones=[15]
+    )
     loss_func = nn.CrossEntropyLoss(ignore_index=tokenizer.PAD.item(), label_smoothing=0.0).to(DEVICE)
     torch.autograd.set_detect_anomaly(True)
     for epoch in range(NUM_EPOCHS):
@@ -85,9 +102,11 @@ def train(model: Meshtron, tokenizer: VertexTokenizer):
             
             loss.backward()
             optimizer.step()
-            step+=1
+            scheduler.step()
+            optimizer.zero_grad()
+            g_step+=1
     
-    return loss.item(), step
+    return loss.item(), g_step
 
 def main():
     model = get_model()
