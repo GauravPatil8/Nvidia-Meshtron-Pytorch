@@ -12,7 +12,8 @@ class PipelineRunner:
         ingestion_stage = Ingestion(ConfigurationManager.ingestion_config())
         ingestion_stage.run()
             
-        training_stage = Trainer(ConfigurationManager.training_config(),
+        training_stage = Trainer(ConfigurationManager.ingestion_config().dataset_len,
+                                 ConfigurationManager.training_config(),
                                  ConfigurationManager.model_params(),
                                  ConfigurationManager.dataset_config(),
                                  ConfigurationManager.dataloader_config())
