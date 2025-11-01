@@ -30,18 +30,19 @@ class Attention(nn.Module):
         b_v, l_v, _ = v.size()
         h = self.num_heads
         d = self.head_dim
-
+        device = q.device
         q_freqs_complex = precompute_theta_pos_freq(self.head_dim, l_q, 10000.0)
         k_freqs_complex = precompute_theta_pos_freq(self.head_dim, l_k, 10000.0)
 
+        q = self.q_proj(q).view(b_q, l_q, h, d)
+        k = self.k_proj(k).view(b_k, l_k, h, d)
+        
         # b l h d -> b h l d
-        q = self.q_proj(q).view(b_q, l_q, h, d).transpose(1,2) 
-        k = self.k_proj(k).view(b_k, l_k, h, d).transpose(1,2)
         v = self.v_proj(v).view(b_v, l_v, h, d).transpose(1,2)
 
         #positional embedding
-        q = apply_rope(q, q_freqs_complex)
-        k = apply_rope(k, k_freqs_complex)
+        q = apply_rope(q, q_freqs_complex, device).transpose(1,2) 
+        k = apply_rope(k, k_freqs_complex, device).transpose(1,2)
 
         attn_out = torch.zeros_like(q)
 
@@ -54,14 +55,16 @@ class Attention(nn.Module):
             k_win = k[:, :, start:end, :]
             v_win = v[:, :, start:end, :]
 
-            attn_scores  = torch.matmul(q_i, k_win.transpose_(-2, -1)).mul_(d ** -0.5)
+            attn_scores  = torch.matmul(q_i, k_win.transpose(-2, -1)).mul_(d ** -0.5)
 
-            if mask is not None:
-                if mask.dim() == 2:
-                    local_mask = mask[:, start:end].unsqueeze(1).unsqueeze(2)  # (B,1,1,W)
-                elif mask.dim() == 4:
-                    local_mask = mask[:, :, i:i+1, start:end]
-                attn_scores = attn_scores.masked_fill_(local_mask == 0, float('-inf'))
+            # if mask is not None:
+            #     if mask.dim() == 2:
+            #         local_mask = mask[:, start:end].unsqueeze(1).unsqueeze(2)  # (B,1,1,W)
+            #     elif mask.dim() == 3:
+            #         local_mask = mask[:, i:i+1, start:end].unsqueeze(1)  # (B,1,1,W)
+            #     elif mask.dim() == 4:
+            #         local_mask = mask[:, :, i:i+1, start:end]
+            #     attn_scores = attn_scores.masked_fill_(local_mask == 0, float('-inf'))
 
             attn_prob = F.softmax(attn_scores, dim=-1)
             attn_out[:, :, i : i + 1, :] = torch.matmul(attn_prob, v_win)
