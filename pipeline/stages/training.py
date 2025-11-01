@@ -3,15 +3,16 @@ import torch
 import math
 import torch.nn as nn
 from tqdm import tqdm
-from torch.optim.lr_scheduler import LambdaLR
+from torch.optim.lr_scheduler import LambdaLR, CosineAnnealingLR, SequentialLR
 from pipeline.utils.common import logger_init
-from pipeline.utils.model import get_model
+from pipeline.utils.model import get_model, get_latest_weights_path, get_weights_path
 from pipeline.PrimitiveDataset import get_dataloaders
 from pipeline.config_entities import TrainingConfig, ModelParams, DatasetConfig, DataLoaderConfig
-from pipeline.config import get_latest_weights_path, get_weights_path
+
 
 class Trainer(nn.Module):
     def __init__(self, 
+                 dataset_len:int,
                  training_config: TrainingConfig,  
                  model_params: ModelParams, 
                  dataset_config: DatasetConfig, 
@@ -34,34 +35,43 @@ class Trainer(nn.Module):
 
         self.total_steps = self.training_config.num_epochs * len(self.train_dataloader)
 
-        self.warmup_steps = 5000
+        warmup_steps = (loader_config.train_ratio * dataset_len) / 9 
+        total_steps = (loader_config.train_ratio * dataset_len) * training_config.num_epochs
 
-        # self.scheduler = LambdaLR(self.optimizer, self._lr_lambda)
+        self.scheduler = self._get_cosine_scheduler_with_warmup(total_iter=total_steps, warmup_iters=warmup_steps)
 
         self.loss_func = nn.CrossEntropyLoss(ignore_index=self.tokenizer.PAD.item(), label_smoothing=training_config.label_smoothing).to(self.device)
 
 
     def __str__(self):
         return f"Training Stage f{Trainer}"
-    
-    def _lr_lambda(self, current_step: int):
-        if current_step < self.warmup_steps:
-            # linear warm-up
-            return float(current_step) / float(max(1, self.warmup_steps))
-        # cosine decay after warm-up
-        progress = float(current_step - self.warmup_steps) / float(max(1, self.total_steps - self.warmup_steps))
-        return 0.5 * (1.0 + math.cos(progress * math.pi)) * (1 - 1e-5 / self.training_config.learning_rate) + (1e-5 / self.training_config.learning_rate)
+
+    def _get_cosine_scheduler_with_warmup(self, total_iter, warmup_iters):
+
+        warmup_scheduler = LambdaLR(
+            self.optimizer,
+            lr_lambda=lambda step: step / 15 if step < 15 else 1.0
+        )
+
+        cosine_scheduler = CosineAnnealingLR(
+            self.optimizer,
+            T_max=total_iter - warmup_iters, 
+            eta_min=0.0
+        )
+
+        scheduler = SequentialLR(
+            self.optimizer,
+            schedulers=[warmup_scheduler, cosine_scheduler],
+            milestones=[warmup_iters]
+        )
+
+        return scheduler
 
     def validate(self):
-        """
-        Validation with optional KV cache for faster inference.
-        
-        Args:
-            use_kv_cache: Whether to use rolling KV cache during validation
-        """
+
         self.model.eval()
-        expected = []
-        predicted = []
+        total_loss = 0.0
+        total_samples = 0
 
         with torch.no_grad():
             for batch in tqdm(self.test_dataloader):
@@ -75,20 +85,13 @@ class Trainer(nn.Module):
                 out = self.model(decoder_input, point_cloud, face_count, quad_ratio, decoder_mask)
                 probs = self.model.project(out)
 
-                tokens = torch.argmax(probs, dim=-1)
-                expected.append(target)
-                predicted.append(tokens)
+                loss = self.loss_func(probs.view(-1, self.tokenizer.vocab_size), target.view(-1))
 
-        # Calculate accuracy - need to handle different sequence lengths
-        acc=[]
-        total_preds = len(predicted)
-        for i in range(total_preds):
-            correct = sum(predicted[i]==expected[i])
-            acc.append(correct/ len(predicted[i]))
-        test_acc = sum(acc) / total_preds #avg accuracy
+                total_loss += loss.item() * target.size(0)
+                total_samples += target.size(0)
 
-        return test_acc
-
+        avg_loss = total_loss / total_samples
+        return avg_loss
 
     def run(self):
 
@@ -104,6 +107,7 @@ class Trainer(nn.Module):
             self.model.load_state_dict(state["model_state_dict"])
             initial_epoch  = state["epoch"] + 1
             self.optimizer.load_state_dict(state['optimizer_state_dict'])
+            self.scheduler.load_state_dict(state['scheduler_state_dict'])
             global_step = state['global_step']
             del state
         else:
@@ -131,16 +135,17 @@ class Trainer(nn.Module):
                 
                 loss.backward()
                 self.optimizer.step()
+                self.scheduler.step()
                 self.optimizer.zero_grad(set_to_none=True)
                 global_step += 1
 
 
-            if epoch != 00 and self.training_config.val_after_every % epoch == 0:
-                test_acc = self.validate()
+                if global_step != 00 and self.training_config.val_after_every % global_step == 0:
+                    testing_loss = self.validate()
 
-                logger.info(f"Training iteration epoch: {epoch:02d}, loss: {loss}")
-                
-            logger.info(f"Training iteration epoch: {epoch:02d}, loss: {loss}")
+                    logger.info(f"Training iteration: {global_step:02d}, training_loss: {loss}, testing_loss: {testing_loss}")
+                    
+                logger.info(f"Training iteration epoch: {global_step:02d}, loss: {loss}")
             
             model_file_path = get_weights_path(self.training_config, f"{epoch:02d}")
             old_model_file_path = get_weights_path(self.training_config, f"{epoch - 1:02d}")
@@ -150,6 +155,7 @@ class Trainer(nn.Module):
                     'epoch': epoch,
                     'model_state_dict': self.model.state_dict(),
                     'optimizer_state_dict': self.optimizer.state_dict(),
+                    'scheduler_state_dict': self.scheduler.state_dict(),
                     'global_step': global_step
                 },
                 model_file_path
