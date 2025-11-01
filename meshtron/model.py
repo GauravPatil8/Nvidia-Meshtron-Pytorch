@@ -9,22 +9,21 @@ from meshtron.decoder_hourglass import (
     parse_hierarchy,
     build_hourglass_valley
 )
-from meshtron.VertexTokenizer import VertexTokenizer
 
 class Meshtron(nn.Module):
     def __init__(self,
                  *,
                  dim: int,
-                 num_bins: int,
+                 embedding_size: int,
                  n_heads: int,
                  head_dim: int,
                  window_size: int,
                  d_ff: int,
                  hierarchy: str,
                  dropout: float,
+                 pad_token: int,
                  condition_every_n_layers:int,
                  encoder: ConditioningEncoder,
-                 tokenizer: VertexTokenizer,
                  ):
         super().__init__()
 
@@ -34,9 +33,8 @@ class Meshtron(nn.Module):
         self.sf = shortening_factor_list
         self.n_blocks = num_blocks
         
-        self.embedding = InputEmbedding(num_bins, dim)
+        self.embedding = InputEmbedding(embedding_size, dim)
         self.up_sample = LinearUpSample(shortening_factor_list[0], dim)
-        self.tokenizer = tokenizer
         self.conditioning_encoder = encoder
 
         self.pre_blocks = nn.ModuleList([
@@ -53,7 +51,7 @@ class Meshtron(nn.Module):
             d_ff=d_ff,
             window_size=window_size,
             dropout=dropout,
-            pad_token=tokenizer.PAD.item(),
+            pad_token=pad_token,
             condition_every_n_layers=condition_every_n_layers,
         )
                                              
@@ -62,7 +60,7 @@ class Meshtron(nn.Module):
             for i in range(n_pre_post_blocks)
         ])
 
-        self.out_proj = ProjectionLayer(dim, num_bins)
+        self.out_proj = ProjectionLayer(dim, embedding_size)
         
     
     def forward(self, data, conditioning_data, face_count, quad_ratio, mask):

@@ -76,7 +76,6 @@ class LinearDownSample(nn.Module):
     def forward(self, x):
         b, _, _ = x.shape
         x = pad_to_multiple(x, self.sf, dim=1, value=self.pad_token)
-        x=x.to(dtype = torch.float16)
         _, s_new, _ = x.shape
         return self.linear(x.view(b, s_new // self.sf, self.dim*self.sf))
     
@@ -196,7 +195,7 @@ class Layer(nn.Module):
                 n_heads,
                 head_dim,
                 d_ff,
-                window_size.
+                window_size,
                 dropout,
                 conditioning_flag=((i % condition_every_n_layers) == 0) and i != 0
             ) for i in range(num_blocks)
@@ -225,7 +224,7 @@ def build_hourglass_valley(
         h_sfs: list[int],
         h_nl: list[int],
         d_ff: int,
-        window_size:bool,
+        window_size:int,
         dropout: float,
         pad_token: int,
         condition_every_n_layers: bool
