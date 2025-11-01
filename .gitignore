@@ -211,3 +211,4 @@ __marimo__/
 artifacts/
 todo.txt
 env_meshtron
+pipeline/logs
