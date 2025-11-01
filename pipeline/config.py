@@ -19,7 +19,7 @@ class ConfigurationManager:
             root = get_path(PROJECT_ROOT, 'artifacts'),
             dataset_storage_dir = get_path(PROJECT_ROOT, 'artifacts', 'dataset'),
             meshes = get_path(PROJECT_ROOT, 'mesh'),
-            dataset_len = 50
+            dataset_len = 10000
         )
     
     @staticmethod
@@ -38,7 +38,6 @@ class ConfigurationManager:
     @staticmethod
     def model_params():
         #configured according to Meshtron-small
-        PROJECT_ROOT = get_root_folder()
         return ModelParams(
             dim = 1024,
             embedding_size = 131, # 0-127(bins) + 128-130 special tokens,
@@ -69,7 +68,7 @@ class ConfigurationManager:
     @staticmethod
     def dataloader_config():
         return DataLoaderConfig(
-            train_ratio=1.0,
+            train_ratio=0.9,
             batch_size=2,
             num_workers=2,
             shuffle=True,
@@ -99,16 +98,3 @@ class ConfigurationManager:
             final_classifier_head = False,
             dim_ffn = 2816
         )
-    
-
-def get_latest_weights_path(config: TrainingConfig):
-    weights_files = list(Path(config.model_folder).glob(config.model_basename))
-    if len(weights_files) == 0:
-        return None
-    weights_files.sort()
-    return str(weights_files[-1])
-
-def get_weights_path(config: TrainingConfig, epoch: str):
-    PROJECT_ROOT = get_root_folder()
-    os.makedirs(get_path(PROJECT_ROOT, config.model_folder), exist_ok = True)
-    return get_path(PROJECT_ROOT, config.model_folder, f"{config.model_basename}_{epoch}.pt")
