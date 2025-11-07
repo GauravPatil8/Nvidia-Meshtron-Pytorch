@@ -46,18 +46,10 @@ def parse_hierarchy(hierarchy: str):
 
     return relative_sf[1:], n_blocks[1:], n_blocks[0]
 
-class SwiGLU(nn.Module):
-    def __init__(self, dimension):
-        super().__init__()
-        self.linear_1 = nn.Linear(dimension,dimension)
-        self.linear_2 = nn.Linear(dimension,dimension)
-
-    def forward(self, x):
-        output = self.linear_1(x)
-        swish = output * torch.sigmoid(output)
-        swiglu = swish * self.linear_2(x)
-
-        return swiglu
+def SwiGLU(x: torch.Tensor):
+    "SwiGLU activation function"
+    x1, x2 = x.chunk(2, dim=-1)
+    return F.silu(x2) * x1
         
 class LinearUpSample(nn.Module):
     def __init__(self, shorten_factor: int, dim: int):
@@ -101,7 +93,7 @@ class InputEmbedding(nn.Module):
 class FeedForwardNetwork(nn.Module):
     def __init__(self, dim:int, d_ff:int, dropout:float, activation):
         super().__init__()
-        self.linear1 = nn.Linear(dim, d_ff, dtype = torch.float32)
+        self.linear1 = nn.Linear(dim, 2 * d_ff, dtype = torch.float32) #for swiglu chunking
         self.linear2 = nn.Linear(d_ff, dim, dtype = torch.float32)
         self.dropout = nn.Dropout(dropout, inplace = True)
         self.activation = activation
@@ -162,7 +154,7 @@ class Transformer(nn.Module):
 
         self.dropout = dropout
         self.attention = Attention(dim, num_heads, head_dim, window_size)
-        self.FFN = FeedForwardNetwork(dim, dim_ff, dropout, SwiGLU(dim_ff))
+        self.FFN = FeedForwardNetwork(dim, dim_ff, dropout, SwiGLU)
 
     def forward(self,*, x: torch.Tensor, conditions: Optional[torch.Tensor], mask: Optional[torch.Tensor] = None):
         x = self.residuals[0](x, lambda x: self.attention(q=x,k=x, v=x, mask=mask).to(dtype = torch.float32))
