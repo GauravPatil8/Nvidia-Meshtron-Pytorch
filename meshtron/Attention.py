@@ -60,7 +60,7 @@ class Attention(nn.Module):
             attn_prob = F.softmax(attn_scores, dim=-1)
             attn_out[:, :, i : i + 1, :] = torch.matmul(attn_prob, v_win)
 
-        out = attn_out.transpose_(1,2).contiguous().view(b_q,l_q,self.dim)
+        out = attn_out.transpose_(1,2).contiguous().view(b_q,l_q,h*d)
         out = self.o_proj(out)
 
         return out
