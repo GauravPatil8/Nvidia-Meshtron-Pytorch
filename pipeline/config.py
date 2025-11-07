@@ -28,7 +28,7 @@ class ConfigurationManager:
         return TrainingConfig(
             num_epochs=2,
             learning_rate=0.01,
-            label_smoothing= 0.,
+            label_smoothing= 0.1,
             model_folder=get_path(PROJECT_ROOT, "artifacts", "model"),
             model_basename="meshtron",
             preload="latest",
@@ -46,7 +46,8 @@ class ConfigurationManager:
             window_size=3,
             dim_ff=2816,
             hierarchy="4@1 8@3 12@9 8@3 4@1",
-            dropout = 0.,
+            dropout = 0.2,
+            pad_token=0,
             condition_every_n_layers= 4,   
         )
 
