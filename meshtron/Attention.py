@@ -57,15 +57,6 @@ class Attention(nn.Module):
 
             attn_scores  = torch.matmul(q_i, k_win.transpose(-2, -1)).mul_(d ** -0.5)
 
-            if mask is not None:
-                if mask.dim() == 2:
-                    local_mask = mask[:, start:end].unsqueeze(1).unsqueeze(2)  # (B,1,1,W)
-                elif mask.dim() == 3:
-                    local_mask = mask[:, i:i+1, start:end].unsqueeze(1)  # (B,1,1,W)
-                elif mask.dim() == 4:
-                    local_mask = mask[:, :, i:i+1, start:end]
-                attn_scores = attn_scores.masked_fill_(local_mask == 0, float('-inf'))
-
             attn_prob = F.softmax(attn_scores, dim=-1)
             attn_out[:, :, i : i + 1, :] = torch.matmul(attn_prob, v_win)
 
