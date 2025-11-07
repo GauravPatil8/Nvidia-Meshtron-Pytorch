@@ -43,7 +43,7 @@ class ConfigurationManager:
             embedding_size = 131, # 0-127(bins) + 128-130 special tokens,
             n_heads = 64,
             head_dim=64,
-            window_size=3,
+            window_size=512,
             dim_ff=2816,
             hierarchy="4@1 8@3 12@9 8@3 4@1",
             dropout = 0.2,
