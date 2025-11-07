@@ -32,7 +32,7 @@ POINT_CLOUD = torch.randn([NUM_SAMPLES,128,6], dtype=torch.float32).to(device=DE
 QUAD_RATIO = torch.rand(NUM_SAMPLES,1).to(device=DEVICE, dtype=torch.float32)
 FACE_COUNT = torch.randint(5000, 15000, (NUM_SAMPLES,1)).to(device=DEVICE, dtype=torch.float32)
 TARGET = torch.cat([sub_input, torch.tensor([[tokenizer.EOS] * 9] * NUM_SAMPLES, dtype = torch.int64)],dim=-1).to(device=DEVICE)
-MASK = torch.tril(torch.ones((1, SEQ_LEN, SEQ_LEN))).type(torch.int64).to(device=DEVICE)
+MASK = torch.tril(torch.ones((1, SEQ_LEN+9, SEQ_LEN+9))).type(torch.int64).to(device=DEVICE)
 
 def get_model():
 
