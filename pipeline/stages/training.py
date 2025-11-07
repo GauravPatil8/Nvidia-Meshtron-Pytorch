@@ -76,7 +76,7 @@ class Trainer(nn.Module):
         with torch.no_grad():
             for batch in tqdm(self.test_dataloader):
                 decoder_input = batch["decoder_input"].to(self.device)
-                decoder_mask = batch["decoder_mask"].to(self.device)
+                decoder_mask = None
                 point_cloud = batch["point_cloud"].to(self.device)
                 quad_ratio = batch["quad_ratio"].to(self.device)
                 face_count = batch["face_count"].to(self.device)
@@ -119,7 +119,7 @@ class Trainer(nn.Module):
 
             for batch in batch_iter:
                 decoder_input = batch["decoder_input"].to(self.device)
-                decoder_mask = batch["decoder_mask"].to(self.device)
+                decoder_mask = None
                 point_cloud = batch["point_cloud"].to(self.device)
                 quad_ratio = batch["quad_ratio"].to(self.device)
                 face_count = batch["face_count"].to(self.device)

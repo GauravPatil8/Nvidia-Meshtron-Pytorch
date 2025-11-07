@@ -112,7 +112,7 @@ class PrimitiveDataset(Dataset):
         )
         return {
             "decoder_input":decoder_input,
-            "decoder_mask":(decoder_input != self.PAD).unsqueeze(0).int() & causal_mask(decoder_input.size(0)).to(dtype=torch.int64), # (1, seq_len) & (1, seq_len, seq_len)
+            # "decoder_mask":(decoder_input != self.PAD).unsqueeze(0).int() & causal_mask(decoder_input.size(0)).to(dtype=torch.int64), # (seq_len, 1) & (1, seq_len, seq_len)
             "target":target.to(dtype=torch.int64),
             "point_cloud":points.to(dtype=torch.float32),
             "quad_ratio":torch.tensor(quad_ratio, dtype=torch.float32),
