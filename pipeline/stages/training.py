@@ -27,7 +27,7 @@ class Trainer(nn.Module):
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-        model_params.tokenizer = self.tokenizer
+        model_params.pad_token = self.tokenizer.PAD.item()
 
         self.model = get_model(model_params).to(device=self.device)
 
@@ -50,7 +50,7 @@ class Trainer(nn.Module):
 
         warmup_scheduler = LambdaLR(
             self.optimizer,
-            lr_lambda=lambda step: step / 15 if step < 15 else 1.0
+            lr_lambda=lambda step: step / warmup_iters if step < warmup_iters else 1.0
         )
 
         cosine_scheduler = CosineAnnealingLR(
@@ -119,7 +119,7 @@ class Trainer(nn.Module):
 
             for batch in batch_iter:
                 decoder_input = batch["decoder_input"].to(self.device)
-                decoder_mask = None
+                decoder_mask = batch["decoder_mask"].to(self.device)
                 point_cloud = batch["point_cloud"].to(self.device)
                 quad_ratio = batch["quad_ratio"].to(self.device)
                 face_count = batch["face_count"].to(self.device)
@@ -132,7 +132,8 @@ class Trainer(nn.Module):
 
                 loss = self.loss_func(proj_out.view(-1, self.tokenizer.vocab_size), target.view(-1))
                 batch_iter.set_postfix({"loss": f"{loss.item():6.3f}"})
-                
+                logger.info(f"Epoch: {epoch}, Iteration: {global_step:02d}, loss: {loss}")
+
                 loss.backward()
                 self.optimizer.step()
                 self.scheduler.step()
@@ -145,7 +146,7 @@ class Trainer(nn.Module):
 
                     logger.info(f"Training iteration: {global_step:02d}, training_loss: {loss}, testing_loss: {testing_loss}")
                     
-                logger.info(f"Training iteration epoch: {global_step:02d}, loss: {loss}")
+            logger.info(f"Loss After epoch {epoch+1:02d}: {loss}")
             
             model_file_path = get_weights_path(self.training_config, f"{epoch:02d}")
             old_model_file_path = get_weights_path(self.training_config, f"{epoch - 1:02d}")

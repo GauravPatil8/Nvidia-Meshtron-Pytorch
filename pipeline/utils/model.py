@@ -16,6 +16,7 @@ def get_model(model_params: ModelParams):
             d_ff= model_params.dim_ff,
             hierarchy= model_params.hierarchy,
             dropout= model_params.dropout,
+            pad_token=model_params.pad_token,
             condition_every_n_layers= model_params.condition_every_n_layers,
             encoder=get_encoder(ConditioningConfig)
         )
