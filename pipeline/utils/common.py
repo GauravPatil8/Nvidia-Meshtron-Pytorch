@@ -13,31 +13,23 @@ def logger_init(name="meshtron_logger"):
    
     os.makedirs("pipeline/logs/", exist_ok=True)
 
-    # Create a dedicated logger
     logger = logging.getLogger(name)
     logger.setLevel(logging.INFO)
+    logger.propagate = False  # prevent bubbling to root logger
 
-    # Avoid propagating messages to root (prevents external libs logging here)
-    logger.propagate = False  
+    # Prevent adding duplicate handlers if re-initialized
+    if logger.handlers:
+        return logger
 
-    # File handler
+    # File handler only
     fh = logging.FileHandler("pipeline/logs/info.log")
     fh.setLevel(logging.INFO)
 
-    # Console handler
-    ch = logging.StreamHandler()
-    ch.setLevel(logging.INFO)
-
-    # Formatter
     formatter = logging.Formatter(
         "%(asctime)s - %(levelname)s - %(filename)s:%(lineno)d - %(message)s"
     )
     fh.setFormatter(formatter)
-    ch.setFormatter(formatter)
 
-    # Add handlers (avoid duplicates if re-initialized)
-    if not logger.handlers:
-        logger.addHandler(fh)
-        logger.addHandler(ch)
+    logger.addHandler(fh)
 
     return logger
