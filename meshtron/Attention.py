@@ -38,9 +38,12 @@ class Attention(nn.Module):
         q = self.q_proj(q).view(b_q, l_q, h, d)
         k = self.k_proj(k).view(b_k, l_k, h, d)
         v = self.v_proj(v).view(b_v, l_v, h, d)
-
+        kv = torch.stack([k, v], dim=2)
+        
         #positional embedding
-        # q, k = self.rope(q, k)
+        q, kv = self.rope(q, kv)
+
+        k,v = kv.unbind(dim=2)
 
         out = flash_attn_func(
             q, k, v,
