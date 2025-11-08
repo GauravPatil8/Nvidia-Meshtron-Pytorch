@@ -3,7 +3,7 @@ import torch
 import math
 import torch.nn as nn
 from tqdm import tqdm
-from torch.optim.lr_scheduler import LambdaLR, CosineAnnealingLR, SequentialLR
+from torch.optim.lr_scheduler import LambdaLR, CosineAnnealingLR, SequentialLR, LinearLR
 from pipeline.utils.common import logger_init
 from pipeline.utils.model import get_model, get_latest_weights_path, get_weights_path
 from pipeline.PrimitiveDataset import get_dataloaders
@@ -48,16 +48,17 @@ class Trainer(nn.Module):
         return f"Training Stage f{Trainer}"
 
     def _get_cosine_scheduler_with_warmup(self, total_iter, warmup_iters):
-
-        warmup_scheduler = LambdaLR(
-            self.optimizer,
-            lr_lambda=lambda step: step / warmup_iters if step < warmup_iters else 1.0
+        warmup_scheduler = LinearLR(
+            self.optimizer, 
+            start_factor=1e-10,  # Start near 0
+            end_factor=1.0, 
+            total_iters=warmup_iters
         )
 
         cosine_scheduler = CosineAnnealingLR(
             self.optimizer,
-            T_max=total_iter - warmup_iters, 
-            eta_min=0.0
+            T_max=total_iter - warmup_iters,
+            eta_min=0  # or base_lr * 0.1
         )
 
         scheduler = SequentialLR(
@@ -83,7 +84,7 @@ class Trainer(nn.Module):
                 face_count = batch["face_count"].to(self.device)
                 target = batch["target"].to(self.device)
 
-                with torch.amp.autocast('cuda', dtype=torch.float16):
+                with torch.amp.autocast('cuda', dtype=torch.bfloat16):
                     out = self.model(decoder_input, point_cloud, face_count, quad_ratio, decoder_mask)
                     probs = self.model.project(out)
 
@@ -141,6 +142,8 @@ class Trainer(nn.Module):
 
                 #backward
                 self.scaler.scale(loss).backward()
+                self.scaler.unscale_(self.optimizer)
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
                 self.scaler.step(self.optimizer)
                 self.scaler.update()
                 self.scheduler.step()
