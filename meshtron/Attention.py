@@ -15,10 +15,10 @@ class Attention(nn.Module):
         self.window_size = window_size
         hidden_dim = num_heads * self.head_dim
 
-        self.q_proj = nn.Linear(dim, hidden_dim, bias=False)
-        self.k_proj = nn.Linear(dim, hidden_dim, bias=False)
-        self.v_proj = nn.Linear(dim, hidden_dim, bias=False)
-        self.o_proj = nn.Linear(hidden_dim, dim, bias=False)
+        self.q_proj = nn.Linear(dim, hidden_dim, bias=False,dtype=torch.float16)
+        self.k_proj = nn.Linear(dim, hidden_dim, bias=False,dtype=torch.float16)
+        self.v_proj = nn.Linear(dim, hidden_dim, bias=False,dtype=torch.float16)
+        self.o_proj = nn.Linear(hidden_dim, dim, bias=False,dtype=torch.float16)
 
     def forward(self, q, k, v, mask = None):
         """

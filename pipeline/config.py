@@ -48,7 +48,8 @@ class ConfigurationManager:
             hierarchy="4@1 8@3 12@9 8@3 4@1",
             dropout = 0.2,
             pad_token=0,
-            condition_every_n_layers= 4,   
+            condition_every_n_layers= 4,
+            encoder = None   
         )
 
     @staticmethod

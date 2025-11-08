@@ -157,9 +157,9 @@ class Transformer(nn.Module):
         self.FFN = FeedForwardNetwork(dim, dim_ff, dropout, SwiGLU)
 
     def forward(self,*, x: torch.Tensor, conditions: Optional[torch.Tensor], mask: Optional[torch.Tensor] = None):
-        x = self.residuals[0](x, lambda x: self.attention(q=x,k=x, v=x, mask=mask).to(dtype = torch.float32))
+        x = self.residuals[0](x, lambda x: self.attention(q=x.to(dtype = torch.float16),k=x.to(dtype = torch.float16), v=x.to(dtype = torch.float16), mask=mask).to(dtype = torch.float32))
         if self.conditioning_flag:
-            x = self.residuals[1](x, lambda x: self.attention(q=x,k= conditions, v=conditions, mask=mask).to(dtype = torch.float32))
+            x = self.residuals[1](x, lambda x: self.attention(q=x.to(dtype = torch.float16),k= conditions.to(dtype = torch.float16), v=conditions.to(dtype = torch.float16), mask=mask).to(dtype = torch.float32))
             x = self.residuals[2](x, self.FFN)
         else:
             x = self.residuals[1](x, self.FFN)

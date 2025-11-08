@@ -66,7 +66,7 @@ class PrimitiveDataset(Dataset):
         mesh.vertices = vertices
 
         #sampling points on the surface of the bounded mesh (N, 3)
-        point_cloud, face_indices = trimesh.sample.sample_surface_even(mesh, self.num_points)
+        point_cloud, face_indices = trimesh.sample.sample_surface(mesh, self.num_points)
 
         #point cloud & point normals
         point_cloud = torch.from_numpy(point_cloud)

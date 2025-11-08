@@ -10,7 +10,7 @@ def precompute_theta_pos_freq(head_dim, seq_len, theta):
   return freqs_complex
 
 def apply_rope(x, freqs_complex, device):
-  x_complex = torch.view_as_complex(x.float().reshape(*x.shape[:-1], -1, 2)).to(device=device)
+  x_complex = torch.view_as_complex(x.reshape(*x.shape[:-1], -1, 2)).to(device=device)
   freqs_complex = freqs_complex.unsqueeze(0).unsqueeze(2).to(device=device)
   x_rotated = x_complex*freqs_complex
   x_out = torch.view_as_real(x_rotated)

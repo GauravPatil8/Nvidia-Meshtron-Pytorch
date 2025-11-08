@@ -1,7 +1,7 @@
 from meshtron.model import Meshtron
 from meshtron.encoder_conditioning import ConditioningEncoder
 from pipeline.config_entities import ModelParams, ConditioningConfig, TrainingConfig
-from pipeline.config import ConditioningConfig
+from pipeline.config import ConfigurationManager
 from pipeline.utils.common import get_path, get_root_folder
 from pathlib import Path
 import os
@@ -18,7 +18,7 @@ def get_model(model_params: ModelParams):
             dropout= model_params.dropout,
             pad_token=model_params.pad_token,
             condition_every_n_layers= model_params.condition_every_n_layers,
-            encoder=get_encoder(ConditioningConfig)
+            encoder=get_encoder(ConfigurationManager.conditioning_config())
         )
 
 def get_encoder(conditioning_params: ConditioningConfig):
