@@ -87,7 +87,7 @@ class ConfigurationManager:
             input_axis= 1,
             num_latents = 1024,
             latent_dim = 1024,
-            cross_heads = 1,
+            cross_heads = 16,
             latent_heads = 16,
             cross_dim_head = 64,
             latent_dim_head = 64,
