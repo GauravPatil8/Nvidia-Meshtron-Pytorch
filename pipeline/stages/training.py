@@ -42,6 +42,7 @@ class Trainer(nn.Module):
 
         self.loss_func = nn.CrossEntropyLoss(ignore_index=self.tokenizer.PAD.item(), label_smoothing=training_config.label_smoothing).to(self.device)
 
+        self.scaler = torch.amp.GradScaler()
 
     def __str__(self):
         return f"Training Stage f{Trainer}"
@@ -82,10 +83,11 @@ class Trainer(nn.Module):
                 face_count = batch["face_count"].to(self.device)
                 target = batch["target"].to(self.device)
 
-                out = self.model(decoder_input, point_cloud, face_count, quad_ratio, decoder_mask)
-                probs = self.model.project(out)
+                with torch.amp.autocast('cuda', dtype=torch.float16):
+                    out = self.model(decoder_input, point_cloud, face_count, quad_ratio, decoder_mask)
+                    probs = self.model.project(out)
 
-                loss = self.loss_func(probs.view(-1, self.tokenizer.vocab_size), target.view(-1))
+                    loss = self.loss_func(probs.view(-1, self.tokenizer.vocab_size), target.view(-1))
 
                 total_loss += loss.item() * target.size(0)
                 total_samples += target.size(0)
@@ -99,7 +101,7 @@ class Trainer(nn.Module):
         global_step = 0
         logger = logger_init()
         model_filename = get_latest_weights_path(self.training_config) if self.training_config.preload == "latest" else get_weights_path(self.training_config, epoch=self.training_config.preload)
-
+        
 
         if model_filename:
             logger.info(f"Preloading model: {model_filename}")
@@ -108,6 +110,7 @@ class Trainer(nn.Module):
             initial_epoch  = state["epoch"] + 1
             self.optimizer.load_state_dict(state['optimizer_state_dict'])
             self.scheduler.load_state_dict(state['scheduler_state_dict'])
+            self.scaler.load_state_dict(state['scaler_state_dict'])
             global_step = state['global_step']
             del state
         else:
@@ -125,17 +128,21 @@ class Trainer(nn.Module):
                 face_count = batch["face_count"].to(self.device)
                 target = batch["target"].to(self.device)
 
-
-                output = self.model(decoder_input, point_cloud, face_count, quad_ratio, decoder_mask)
-                proj_out = self.model.project(output)
+                #forward
+                with torch.amp.autocast('cuda',dtype=torch.float16):
+                    output = self.model(decoder_input, point_cloud, face_count, quad_ratio, decoder_mask)
+                    proj_out = self.model.project(output)
                 
 
-                loss = self.loss_func(proj_out.view(-1, self.tokenizer.vocab_size), target.view(-1))
+                    loss = self.loss_func(proj_out.view(-1, self.tokenizer.vocab_size), target.view(-1))
+
                 batch_iter.set_postfix({"loss": f"{loss.item():6.3f}"})
                 logger.info(f"Epoch: {epoch}, Iteration: {global_step:02d}, loss: {loss}")
 
-                loss.backward()
-                self.optimizer.step()
+                #backward
+                self.scaler.scale(loss).backward()
+                self.scaler.step(self.optimizer)
+                self.scaler.update()
                 self.scheduler.step()
                 self.optimizer.zero_grad(set_to_none=True)
                 global_step += 1
@@ -157,6 +164,7 @@ class Trainer(nn.Module):
                     'model_state_dict': self.model.state_dict(),
                     'optimizer_state_dict': self.optimizer.state_dict(),
                     'scheduler_state_dict': self.scheduler.state_dict(),
+                    'scaler_state_dict': self.scaler.state_dict(),
                     'global_step': global_step
                 },
                 model_file_path
