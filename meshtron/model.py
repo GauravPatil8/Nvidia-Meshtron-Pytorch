@@ -38,7 +38,7 @@ class Meshtron(nn.Module):
         self.conditioning_encoder = encoder
 
         self.pre_blocks = nn.ModuleList([
-            Transformer(dim,n_heads,head_dim,d_ff,window_size,dropout,conditioning_flag= ((i % condition_every_n_layers) == 0) and i != 0) 
+            Transformer(dim,n_heads,head_dim,d_ff,window_size,dropout,conditioning_flag= (((i+1) % condition_every_n_layers) == 0) and i != 0) 
             for i in range(n_pre_post_blocks)
         ])
 
@@ -56,7 +56,7 @@ class Meshtron(nn.Module):
         )
                                              
         self.post_block = nn.ModuleList([
-            Transformer(dim,n_heads,head_dim,d_ff,window_size,dropout,conditioning_flag= ((i % condition_every_n_layers) == 0) and i != 0) 
+            Transformer(dim,n_heads,head_dim,d_ff,window_size,dropout,conditioning_flag= (((i+1) % condition_every_n_layers) == 0) and i != 0) 
             for i in range(n_pre_post_blocks)
         ])
 
