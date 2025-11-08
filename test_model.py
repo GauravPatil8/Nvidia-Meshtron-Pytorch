@@ -96,14 +96,15 @@ def train(model: Meshtron, tokenizer: VertexTokenizer):
         iter = tqdm(range(NUM_SAMPLES), desc=f"Processing epoch: {epoch+1:02d}")
         for i in iter:
             #forward
-            with torch.amp.autocast('cuda',dtype=torch.float16):
+            with torch.amp.autocast(device_type='cuda'):
                 output = model(INPUT_DATA[i].unsqueeze(0), POINT_CLOUD[i].unsqueeze(-3), FACE_COUNT[i], QUAD_RATIO[i], MASK)
                 out_prob = model.project(output)
+                # print(out_prob)
                 loss = loss_func(out_prob.view(-1, tokenizer.vocab_size), TARGET[i].view(-1))
             iter.set_postfix({"loss": f"{loss.item():6.3f}"})
-            
-            SCALER.scale(loss).backward()
-            SCALER.step(optimizer)
+
+            loss.backward()
+            optimizer.step()
             scheduler.step()
             optimizer.zero_grad(set_to_none=True)
             g_step+=1
