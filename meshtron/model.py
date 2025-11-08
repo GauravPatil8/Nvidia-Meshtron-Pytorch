@@ -66,7 +66,7 @@ class Meshtron(nn.Module):
     def forward(self, data, conditioning_data, face_count, quad_ratio, mask):
 
         #conditioning tensor
-        cond = self.conditioning_encoder(conditioning_data, face_count, quad_ratio).to(dtype = torch.float16)
+        cond = self.conditioning_encoder(conditioning_data, face_count, quad_ratio)
 
         def run_block(block: Transformer, data):
             conditions = cond if block.conditioning_flag else None
@@ -74,7 +74,6 @@ class Meshtron(nn.Module):
         
         skips = [] #holds skip connection values, used in upsampling
         data = self.embedding(data)
-        data = data.to(dtype=torch.float16)
 
         # Pre valley block
         for block in self.pre_blocks:

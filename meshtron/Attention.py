@@ -17,10 +17,10 @@ class Attention(nn.Module):
         hidden_dim = num_heads * self.head_dim
 
         self.rope = RotaryEmbedding(dim=self.head_dim, base=10000.0)
-        self.q_proj = nn.Linear(dim, dim, bias=False,dtype=torch.float16)
-        self.k_proj = nn.Linear(dim, dim, bias=False,dtype=torch.float16)
-        self.v_proj = nn.Linear(dim, dim, bias=False,dtype=torch.float16)
-        self.o_proj = nn.Linear(dim, dim, bias=False,dtype=torch.float16)
+        self.q_proj = nn.Linear(dim, dim, bias=False)
+        self.k_proj = nn.Linear(dim, dim, bias=False)
+        self.v_proj = nn.Linear(dim, dim, bias=False)
+        self.o_proj = nn.Linear(dim, dim, bias=False)
 
     def forward(self, q, k, v, mask = None):
         """
@@ -33,7 +33,6 @@ class Attention(nn.Module):
         b_v, l_v, _ = v.size()
         h = self.num_heads
         d = self.head_dim
-        device = q.device
 
 
         q = self.q_proj(q).view(b_q, l_q, h, d)
@@ -41,7 +40,7 @@ class Attention(nn.Module):
         v = self.v_proj(v).view(b_v, l_v, h, d)
 
         #positional embedding
-        q, k = self.rope(q, k)
+        # q, k = self.rope(q, k)
 
         out = flash_attn_func(
             q, k, v,

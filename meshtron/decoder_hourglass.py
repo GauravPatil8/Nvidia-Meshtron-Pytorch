@@ -56,7 +56,7 @@ class LinearUpSample(nn.Module):
         super().__init__()
         self.sf = shorten_factor
         self.dim = dim
-        self.linear = nn.Linear(dim, shorten_factor * dim, dtype = torch.float32)
+        self.linear = nn.Linear(dim, shorten_factor * dim)
 
     def forward(self, x):
         b, s, _ = x.shape
@@ -70,7 +70,7 @@ class LinearDownSample(nn.Module):
         super().__init__()
         self.sf = shorten_factor
         self.dim = dim
-        self.linear = nn.Linear(dim*shorten_factor, dim, dtype=torch.float32)
+        self.linear = nn.Linear(dim*shorten_factor, dim)
         self.pad_token = pad_token
 
     def forward(self, x):
@@ -93,8 +93,8 @@ class InputEmbedding(nn.Module):
 class FeedForwardNetwork(nn.Module):
     def __init__(self, dim:int, d_ff:int, dropout:float, activation):
         super().__init__()
-        self.linear1 = nn.Linear(dim, 2 * d_ff, dtype = torch.float32) #for swiglu chunking
-        self.linear2 = nn.Linear(d_ff, dim, dtype = torch.float32)
+        self.linear1 = nn.Linear(dim, 2 * d_ff) #for swiglu chunking
+        self.linear2 = nn.Linear(d_ff, dim)
         self.dropout = nn.Dropout(dropout, inplace = True)
         self.activation = activation
     
@@ -121,7 +121,7 @@ class ResidualConnection(nn.Module):
         super().__init__()
         self.f_dim = f_dim
         self.dropout = nn.Dropout(dropout, inplace = True)
-        self.norm = nn.LayerNorm(f_dim, bias = False, dtype=torch.float32)
+        self.norm = nn.LayerNorm(f_dim, bias = False)
 
     def forward(self, x, sublayer):
         return x + self.dropout(sublayer(self.norm(x)))
@@ -129,7 +129,7 @@ class ResidualConnection(nn.Module):
 class ProjectionLayer(nn.Module):
     def __init__(self, dim, num_tokens):
         super().__init__()
-        self.proj = nn.Linear(dim, num_tokens, dtype = torch.float32)
+        self.proj = nn.Linear(dim, num_tokens)
 
     def forward(self, x):
         return self.proj(x)
@@ -157,9 +157,9 @@ class Transformer(nn.Module):
         self.FFN = FeedForwardNetwork(dim, dim_ff, dropout, SwiGLU)
 
     def forward(self,*, x: torch.Tensor, conditions: Optional[torch.Tensor], mask: Optional[torch.Tensor] = None):
-        x = self.residuals[0](x, lambda x: self.attention(q=x.to(dtype = torch.float16),k=x.to(dtype = torch.float16), v=x.to(dtype = torch.float16), mask=mask).to(dtype = torch.float32))
+        x = self.residuals[0](x, lambda x: self.attention(q=x,k=x, v=x, mask=mask))
         if self.conditioning_flag:
-            x = self.residuals[1](x, lambda x: self.attention(q=x.to(dtype = torch.float16),k= conditions.to(dtype = torch.float16), v=conditions.to(dtype = torch.float16), mask=mask).to(dtype = torch.float32))
+            x = self.residuals[1](x, lambda x: self.attention(q=x,k= conditions, v=conditions, mask=mask))
             x = self.residuals[2](x, self.FFN)
         else:
             x = self.residuals[1](x, self.FFN)
@@ -207,13 +207,9 @@ class Layer(nn.Module):
             x = self.downsample(x)
 
         #tranformer blocks   
-        def run_blocks(x, conditions, mask):
-            for block in self.blocks:
-                x = block(x = x, conditions = conditions, mask = mask)
-            return x
-
-        x = self.residuals(x, lambda x: run_blocks(x, conditions, mask))
-
+        for block in self.blocks:
+            x = block(x = x, conditions = conditions, mask = mask)
+        
         return x
         
 

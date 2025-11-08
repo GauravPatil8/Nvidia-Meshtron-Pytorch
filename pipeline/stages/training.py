@@ -129,7 +129,7 @@ class Trainer(nn.Module):
                 target = batch["target"].to(self.device)
 
                 #forward
-                with torch.amp.autocast('cuda',dtype=torch.float16):
+                with torch.amp.autocast('cuda'):
                     output = self.model(decoder_input, point_cloud, face_count, quad_ratio, decoder_mask)
                     proj_out = self.model.project(output)
                 
@@ -148,7 +148,7 @@ class Trainer(nn.Module):
                 global_step += 1
 
 
-                if global_step != 00 and self.training_config.val_after_every % global_step == 0:
+                if global_step % self.training_config.val_after_every == 0:
                     testing_loss = self.validate()
 
                     logger.info(f"Training iteration: {global_step:02d}, training_loss: {loss}, testing_loss: {testing_loss}")
