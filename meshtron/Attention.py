@@ -1,10 +1,11 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from flash_attn import flash_attn_func
 from meshtron.rope import precompute_theta_pos_freq, apply_rope
 
 class Attention(nn.Module):
-    """Sliding window attention"""
+    """flash Sliding window attention"""
     def __init__(self, dim, num_heads, head_dim, window_size):
         super().__init__()
         assert dim % num_heads == 0, "dim must be divisible by num_heads"
@@ -36,33 +37,21 @@ class Attention(nn.Module):
 
         q = self.q_proj(q).view(b_q, l_q, h, d)
         k = self.k_proj(k).view(b_k, l_k, h, d)
-        
-        # b l h d -> b h l d
-        v = self.v_proj(v).view(b_v, l_v, h, d).transpose(1,2)
+        v = self.v_proj(v).view(b_v, l_v, h, d)
 
         #positional embedding
-        q = apply_rope(q, q_freqs_complex, device).transpose(1,2) 
-        k = apply_rope(k, k_freqs_complex, device).transpose(1,2)
+        q = apply_rope(q, q_freqs_complex, device)
+        k = apply_rope(k, k_freqs_complex, device)
 
-        attn_out = torch.zeros_like(q)
-
-        for i in range(l_q):
-            #window range
-            start = max(0, i-self.window_size)
-            end = i+1
-
-            q_i = q[: , :, i : i+1, :]
-            k_win = k[:, :, start:end, :]
-            v_win = v[:, :, start:end, :]
-
-            attn_scores  = torch.matmul(q_i, k_win.transpose(-2, -1)).mul_(d ** -0.5)
-
-            attn_prob = F.softmax(attn_scores, dim=-1)
-            attn_out[:, :, i : i + 1, :] = torch.matmul(attn_prob, v_win)
-
-        out = attn_out.transpose_(1,2).contiguous().view(b_q,l_q,h*d)
+        out = flash_attn_func(
+            q, k, v,
+            window_size=(self.window_size - 1, 0),
+            causal=True
+        )
+        
+        out = out.reshape(b_q, l_q, h*d)
         out = self.o_proj(out)
-
+        
         return out
                 
 
