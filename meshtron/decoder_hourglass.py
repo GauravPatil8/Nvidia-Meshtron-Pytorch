@@ -100,20 +100,6 @@ class FeedForwardNetwork(nn.Module):
     
     def forward(self, x):
         return self.linear2(self.dropout(self.activation(self.linear1(x))))
-
-
-class LayerNormalization(nn.Module):
-    def __init__(self, f_dim: int, eps: float=10**-6):
-        super().__init__()
-        self.eps = eps
-        self.alpha = nn.Parameter(torch.ones(f_dim))
-        self.beta = nn.Parameter(torch.zeros(f_dim))
-
-    def forward(self, x):
-        mean = x.mean(dim = -1, keepdim=True)
-        std = x.std(dim = -1, keepdim = True)
-
-        return self.alpha * (x - mean) / (std + self.eps) + self.beta
     
 class ResidualConnection(nn.Module):
     #pre-norm residual connection
@@ -145,7 +131,6 @@ class Transformer(nn.Module):
                  conditioning_flag: bool = False,
                  ):
         super().__init__()
-        self.norm = LayerNormalization(dim)
         self.conditioning_flag = conditioning_flag
         if conditioning_flag:
             self.residuals = nn.ModuleList([ResidualConnection(dim, dropout) for _ in range(3)])
@@ -185,7 +170,6 @@ class Layer(nn.Module):
         super().__init__()
         self.sf = shortening_factor
         self.dropout = dropout
-        self.norm = LayerNormalization(dim)
         self.downsample = LinearDownSample(self.sf, dim, pad_token=pad_token)
         self.residuals = ResidualConnection(dim, dropout)
         self.downflag = downflag
@@ -197,7 +181,7 @@ class Layer(nn.Module):
                 d_ff,
                 window_size,
                 dropout,
-                conditioning_flag=((i % condition_every_n_layers) == 0) and i != 0
+                conditioning_flag=(((i+1) % condition_every_n_layers) == 0)
             ) for i in range(num_blocks)
         ])
 
