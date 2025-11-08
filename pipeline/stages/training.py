@@ -121,12 +121,12 @@ class Trainer(nn.Module):
             batch_iter = tqdm(self.train_dataloader, desc=f"Processing epoch: {epoch:02d}")
 
             for batch in batch_iter:
-                decoder_input = batch["decoder_input"].to(self.device)
+                decoder_input = batch["decoder_input"].to(self.device, non_blocking = True)
                 decoder_mask = None
-                point_cloud = batch["point_cloud"].to(self.device)
-                quad_ratio = batch["quad_ratio"].to(self.device)
-                face_count = batch["face_count"].to(self.device)
-                target = batch["target"].to(self.device)
+                point_cloud = batch["point_cloud"].to(self.device, non_blocking = True)
+                quad_ratio = batch["quad_ratio"].to(self.device, non_blocking = True)
+                face_count = batch["face_count"].to(self.device, non_blocking = True)
+                target = batch["target"].to(self.device, non_blocking = True)
 
                 #forward
                 with torch.amp.autocast('cuda'):
