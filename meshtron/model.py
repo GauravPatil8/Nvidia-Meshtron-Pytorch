@@ -73,8 +73,8 @@ class Meshtron(nn.Module):
             return block(x = data, conditions=conditions, mask=mask)
         
         skips = [] #holds skip connection values, used in upsampling
-        data = data.to(dtype=torch.float16)
         data = self.embedding(data)
+        data = data.to(dtype=torch.float16)
 
         # Pre valley block
         for block in self.pre_blocks:
