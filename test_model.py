@@ -28,12 +28,12 @@ NUM_SAMPLES = 20
 SEQ_LEN = 9
 sub_input = torch.randint(0,131,[NUM_SAMPLES,SEQ_LEN], dtype=torch.int64)
 INPUT_DATA = torch.cat([torch.tensor([[tokenizer.SOS] * 9] * NUM_SAMPLES, dtype=torch.int64), sub_input], dim=-1).to(device=DEVICE)
-POINT_CLOUD = torch.randn([NUM_SAMPLES,128,6], dtype=torch.float32).to(device=DEVICE)
-QUAD_RATIO = torch.rand(NUM_SAMPLES,1).to(device=DEVICE, dtype=torch.float32)
-FACE_COUNT = torch.randint(5000, 15000, (NUM_SAMPLES,1)).to(device=DEVICE, dtype=torch.float32)
+POINT_CLOUD = torch.randn([NUM_SAMPLES,128,6], dtype=torch.float16).to(device=DEVICE)
+QUAD_RATIO = torch.rand(NUM_SAMPLES,1).to(device=DEVICE, dtype=torch.float16)
+FACE_COUNT = torch.randint(5000, 15000, (NUM_SAMPLES,1)).to(device=DEVICE, dtype=torch.float16)
 TARGET = torch.cat([sub_input, torch.tensor([[tokenizer.EOS] * 9] * NUM_SAMPLES, dtype = torch.int64)],dim=-1).to(device=DEVICE)
 MASK = torch.tril(torch.ones((1, SEQ_LEN+9, SEQ_LEN+9))).type(torch.int64).to(device=DEVICE)
-
+SCALER = torch.amp.GradScaler()
 def get_model():
 
     encoder = ConditioningEncoder(
@@ -95,15 +95,17 @@ def train(model: Meshtron, tokenizer: VertexTokenizer):
     for epoch in range(NUM_EPOCHS):
         iter = tqdm(range(NUM_SAMPLES), desc=f"Processing epoch: {epoch+1:02d}")
         for i in iter:
-            output = model(INPUT_DATA[i].unsqueeze(0), POINT_CLOUD[i].unsqueeze(-3), FACE_COUNT[i], QUAD_RATIO[i], MASK)
-            out_prob = model.project(output)
-            loss = loss_func(out_prob.view(-1, tokenizer.vocab_size), TARGET[i].view(-1))
+            #forward
+            with torch.amp.autocast('cuda',dtype=torch.float16):
+                output = model(INPUT_DATA[i].unsqueeze(0), POINT_CLOUD[i].unsqueeze(-3), FACE_COUNT[i], QUAD_RATIO[i], MASK)
+                out_prob = model.project(output)
+                loss = loss_func(out_prob.view(-1, tokenizer.vocab_size), TARGET[i].view(-1))
             iter.set_postfix({"loss": f"{loss.item():6.3f}"})
             
-            loss.backward()
-            optimizer.step()
+            SCALER.scale(loss).backward()
+            SCALER.step(optimizer)
             scheduler.step()
-            optimizer.zero_grad()
+            optimizer.zero_grad(set_to_none=True)
             g_step+=1
     
     return loss.item(), g_step
