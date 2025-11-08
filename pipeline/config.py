@@ -71,8 +71,8 @@ class ConfigurationManager:
     def dataloader_config():
         return DataLoaderConfig(
             train_ratio=0.9,
-            batch_size=2,
-            num_workers=2,
+            batch_size=1,
+            num_workers=1,
             shuffle=True,
             pin_memory=True,
             persistent_workers=True
