@@ -212,3 +212,4 @@ artifacts/
 todo.txt
 env_meshtron
 pipeline/logs
+model_weights_copy
