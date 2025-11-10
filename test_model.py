@@ -1,11 +1,17 @@
 from meshtron.model import Meshtron
 from meshtron.encoder_conditioning import ConditioningEncoder
 from meshtron.VertexTokenizer import VertexTokenizer
+from torch.optim.lr_scheduler import LambdaLR, CosineAnnealingLR, SequentialLR
+from pipeline.stages.inference import Inference
+from pipeline.config import ConfigurationManager
+from pipeline.utils.data import get_mesh_stats, normalize_mesh_to_bbox, add_gaussian_noise, set_zero_vector, write_obj
+from pipeline.utils.model import get_weights_path
+from pipeline.utils.common import get_root_folder
+from tqdm import tqdm
 import torch
 import torch.nn as nn
-from tqdm import tqdm
-from torch.optim.lr_scheduler import LambdaLR, CosineAnnealingLR, SequentialLR
-
+import trimesh
+import os
 # --------------------------------------------------------------------------------------------
 #  This script is used to verify that the model runs end-to-end without errors.
 #  It uses randomly generated data to test forward and backward passes,
@@ -116,6 +122,52 @@ def main():
 
     loss, total_steps = train(model, tokenizer)
     print(f"Model Trained successfully \n-The total steps are: {total_steps} \n-Loss: {loss}")
+
+
+def get_point_cloud_data(mesh_path: str):
+    mesh = trimesh.load_mesh(mesh_path, file_type = 'obj')
+    vertices = normalize_mesh_to_bbox(mesh_path,1.0)
+
+    mesh.vertices = vertices
+
+    #sampling points on the surface of the bounded mesh (N, 3)
+    point_cloud, face_indices = trimesh.sample.sample_surface(mesh, 8192//2)
+
+    #point cloud & point normals
+    point_cloud = torch.from_numpy(point_cloud).to(dtype=torch.float32)
+    point_normals = torch.from_numpy(mesh.face_normals[face_indices]).to(dtype=torch.float32)
+
+    # augmentation
+    point_cloud = add_gaussian_noise(point_cloud, mean=0.0, std=0.01) #according to paper: mean = 0.0, std = 0.01
+    point_normals = add_gaussian_noise(point_normals, mean=0.0, std=0.03)
+    point_normals = set_zero_vector(points=point_normals, rate=0.3, size=point_normals.shape[1])
+
+    points = torch.cat((point_cloud, point_normals), dim=1)
+
+    return points
+
+def test_inference():
+    # Configure the model parameters based on the training model parameters
+
+    generator = Inference(ConfigurationManager.model_params, get_weights_path(ConfigurationManager.training_config, 25))
+    mesh_dir = ConfigurationManager.dataset_config().original_mesh_dir
+    monkey_obj = os.path.join(mesh_dir, 'suzanne.obj')
+    cube_obj = os.path.join(mesh_dir,'cube.obj')
+    cone_obj = os.path.join(mesh_dir,'cone.obj')
+    sphere_obj = os.path.join(mesh_dir,'sphere.obj')
+    torus_obj = os.path.join(mesh_dir,'torus.obj')
+
+    selected_obj = monkey_obj
+
+    points = get_point_cloud_data(selected_obj)
+    face_count, quad_ratio = get_mesh_stats(selected_obj)
+    face_count = torch.tensor([face_count], dtype=torch.float32)
+    quad_ratio = torch.tensor([quad_ratio], dtype=torch.float32) 
+
+    gen_point_cloud = generator(points, face_count, quad_ratio)
+
+    write_obj(gen_point_cloud, os.path.join(get_root_folder(), 'artifacts','generations',f'gen_mesh_{os.path.basename(selected_obj)}'))
+
 
 if __name__ == '__main__':
     main()
