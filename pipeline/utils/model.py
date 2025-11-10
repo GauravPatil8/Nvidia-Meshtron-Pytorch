@@ -45,11 +45,12 @@ def get_encoder(conditioning_params: ConditioningConfig):
         )
 
 def get_latest_weights_path(config: TrainingConfig):
-    weights_files = list(Path(config.model_folder).glob(config.model_basename))
-    if len(weights_files) == 0:
+    folder = Path(config.model_folder)
+    files = list(folder.glob("*.pt"))
+    if not files:
         return None
-    weights_files.sort()
-    return str(weights_files[-1])
+    latest = max(files, key=lambda p: p.stat().st_mtime)
+    return str(latest)
 
 def get_weights_path(config: TrainingConfig, epoch: str):
     PROJECT_ROOT = get_root_folder()
