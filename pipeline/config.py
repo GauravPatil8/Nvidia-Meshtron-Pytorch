@@ -26,30 +26,30 @@ class ConfigurationManager:
     def training_config():
         PROJECT_ROOT = get_root_folder()
         return TrainingConfig(
-            num_epochs=2,
-            learning_rate=0.01,
+            num_epochs=20,
+            learning_rate=0.003,
             label_smoothing= 0.1,
-            model_folder=get_path(PROJECT_ROOT, "artifacts", "model"),
+            model_folder=get_path(PROJECT_ROOT, "artifacts", "models"),
             model_basename="meshtron",
             preload="latest",
-            val_after_every=500,
+            val_after_every=2000,
         )
     
     @staticmethod
     def model_params():
-        #configured according to Meshtron-small
+        #Custom configuration to manage low diversity in primitive dataset
         return ModelParams(
-            dim = 1024,
-            embedding_size = 131, # 0-127(bins) + 128-130 special tokens,
-            n_heads = 64,
-            head_dim=64,
-            window_size=512,
-            dim_ff=2816,
-            hierarchy="4@1 8@3 12@9 8@3 4@1",
-            dropout = 0.2,
-            pad_token=0,
-            condition_every_n_layers= 4,
-            encoder = None   
+            dim = 512,
+            embedding_size = 131,
+            n_heads = 16,
+            head_dim = 32,
+            window_size = 256,
+            dim_ff = 1536,
+            hierarchy = "2@1 4@3 8@9 4@3 2@1",
+            dropout = 0.3,
+            pad_token = 0,
+            condition_every_n_layers = 4,
+            encoder = None
         )
 
     @staticmethod
@@ -58,7 +58,7 @@ class ConfigurationManager:
         return DatasetConfig(
             dataset_dir=get_path(PROJECT_ROOT, 'artifacts', 'dataset'),
             original_mesh_dir=get_path(PROJECT_ROOT, 'mesh'),
-            point_cloud_size=8192,
+            point_cloud_size=8192//2,
             num_of_bins=128,
             bounding_box_dim=1.0,
             std_points=0.01,
@@ -71,8 +71,8 @@ class ConfigurationManager:
     def dataloader_config():
         return DataLoaderConfig(
             train_ratio=0.9,
-            batch_size=1,
-            num_workers=1,
+            batch_size=12,
+            num_workers=2,
             shuffle=True,
             pin_memory=True,
             persistent_workers=True
@@ -80,23 +80,23 @@ class ConfigurationManager:
     @staticmethod 
     def conditioning_config():
         return ConditioningConfig(
-            num_freq_bands= 6,
-            depth = 8,
-            max_freq = 10.,
-            input_channels=6,
-            input_axis= 1,
-            num_latents = 1024,
-            latent_dim = 1024,
-            cross_heads = 16,
-            latent_heads = 16,
-            cross_dim_head = 64,
-            latent_dim_head = 64,
+            num_freq_bands = 4,
+            depth = 4,
+            max_freq = 6.0,
+            input_channels = 6,
+            input_axis = 1,
+            num_latents = 256,
+            latent_dim = 512,
+            cross_heads = 8,
+            latent_heads = 8,
+            cross_dim_head = 32,
+            latent_dim_head = 32,
             num_classes = 1,
-            attn_dropout = 0.1,
-            ff_dropout= 0.0,
-            weight_tie_layers = 6,
+            attn_dropout = 0.2,
+            ff_dropout = 0.1,
+            weight_tie_layers = 2,
             fourier_encode_data = True,
-            self_per_cross_attn = 2,
+            self_per_cross_attn = 1,
             final_classifier_head = False,
-            dim_ffn = 2816
-        )
+            dim_ffn = 1024
+    )
