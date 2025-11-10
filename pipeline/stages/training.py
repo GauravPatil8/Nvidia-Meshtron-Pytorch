@@ -3,7 +3,7 @@ import torch
 import math
 import torch.nn as nn
 from tqdm import tqdm
-from torch.optim.lr_scheduler import LambdaLR, CosineAnnealingLR, SequentialLR, LinearLR
+from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
 from pipeline.utils.common import logger_init
 from pipeline.utils.model import get_model, get_latest_weights_path, get_weights_path
 from pipeline.PrimitiveDataset import get_dataloaders
@@ -35,10 +35,12 @@ class Trainer(nn.Module):
 
         self.total_steps = self.training_config.num_epochs * len(self.train_dataloader)
 
-        warmup_steps = (loader_config.train_ratio * dataset_len) / 9 
-        total_steps = (loader_config.train_ratio * dataset_len) * training_config.num_epochs
-
-        self.scheduler = self._get_cosine_scheduler_with_warmup(total_iter=total_steps, warmup_iters=warmup_steps)
+        self.scheduler = CosineAnnealingWarmRestarts(
+            self.optimizer,
+            T_0=1000,             
+            T_mult=2,              
+            eta_min=1e-6 
+        )
 
         self.loss_func = nn.CrossEntropyLoss(ignore_index=self.tokenizer.PAD.item(), label_smoothing=training_config.label_smoothing).to(self.device)
 
@@ -47,27 +49,6 @@ class Trainer(nn.Module):
     def __str__(self):
         return f"Training Stage f{Trainer}"
 
-    def _get_cosine_scheduler_with_warmup(self, total_iter, warmup_iters):
-        warmup_scheduler = LinearLR(
-            self.optimizer, 
-            start_factor=1e-10,  # Start near 0
-            end_factor=1.0, 
-            total_iters=warmup_iters
-        )
-
-        cosine_scheduler = CosineAnnealingLR(
-            self.optimizer,
-            T_max=total_iter - warmup_iters,
-            eta_min=0  # or base_lr * 0.1
-        )
-
-        scheduler = SequentialLR(
-            self.optimizer,
-            schedulers=[warmup_scheduler, cosine_scheduler],
-            milestones=[warmup_iters]
-        )
-
-        return scheduler
 
     def validate(self):
 
