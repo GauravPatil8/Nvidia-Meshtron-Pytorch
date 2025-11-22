@@ -74,10 +74,8 @@ class LinearDownSample(nn.Module):
         self.pad_token = pad_token
 
     def forward(self, x):
-        b, _, _ = x.shape
-        x = pad_to_multiple(x, self.sf, dim=1, value=self.pad_token)
-        _, s_new, _ = x.shape
-        return self.linear(x.view(b, s_new // self.sf, self.dim*self.sf))
+        b, s, _ = x.shape
+        return self.linear(x.view(b, s // self.sf, self.dim*self.sf))
     
 class InputEmbedding(nn.Module):
     def __init__(self, num_tokens: int, dim: int):

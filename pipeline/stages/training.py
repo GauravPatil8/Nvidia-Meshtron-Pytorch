@@ -4,7 +4,7 @@ import math
 import torch.nn as nn
 from tqdm import tqdm
 from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
-from pipeline.utils.common import logger_init
+from pipeline.utils.common import logger_init, get_root_folder
 from pipeline.utils.model import get_model, get_latest_weights_path, get_weights_path
 from pipeline.PrimitiveDataset import get_dataloaders
 from pipeline.config_entities import TrainingConfig, ModelParams, DatasetConfig, DataLoaderConfig
@@ -59,7 +59,7 @@ class Trainer(nn.Module):
         with torch.no_grad():
             for batch in tqdm(self.test_dataloader):
                 decoder_input = batch["decoder_input"].to(self.device)
-                decoder_mask = None
+                decoder_mask = batch["decoder_mask"].to(self.device)
                 point_cloud = batch["point_cloud"].to(self.device)
                 quad_ratio = batch["quad_ratio"].to(self.device)
                 face_count = batch["face_count"].to(self.device)
@@ -83,7 +83,7 @@ class Trainer(nn.Module):
         global_step = 0
         logger = logger_init()
         model_filename = get_latest_weights_path(self.training_config) if self.training_config.preload == "latest" else get_weights_path(self.training_config, epoch=self.training_config.preload)
-        
+        loss_hist = list()        
 
         if model_filename:
             logger.info(f"Preloading model: {model_filename}")
@@ -104,7 +104,7 @@ class Trainer(nn.Module):
 
             for batch in batch_iter:
                 decoder_input = batch["decoder_input"].to(self.device, non_blocking = True)
-                decoder_mask = None
+                decoder_mask = batch["decoder_mask"].to(self.device, non_blocking = True)
                 point_cloud = batch["point_cloud"].to(self.device, non_blocking = True)
                 quad_ratio = batch["quad_ratio"].to(self.device, non_blocking = True)
                 face_count = batch["face_count"].to(self.device, non_blocking = True)
@@ -117,7 +117,7 @@ class Trainer(nn.Module):
                 
 
                     loss = self.loss_func(proj_out.view(-1, self.tokenizer.vocab_size), target.view(-1))
-
+                    loss_hist.append(loss.item())
                 batch_iter.set_postfix({"loss": f"{loss.item():6.3f}"})
                 logger.info(f"Epoch: {epoch}, Iteration: {global_step:02d}, loss: {loss}")
 
@@ -157,3 +157,8 @@ class Trainer(nn.Module):
             #saving some memory
             if os.path.exists(old_model_file_path):
                 os.remove(old_model_file_path)
+
+        #saving loss history
+        with open(os.path.join(get_root_folder(),'logs',"loss.txt"),'w') as f:
+            for loss in loss_hist:
+                f.write(f"{loss:6.3f}\n")

@@ -40,17 +40,31 @@ class Attention(nn.Module):
         v = self.v_proj(v).view(b_v, l_v, h, d)
         kv = torch.stack([k, v], dim=2)
         
+        #useful during inference
+        seqlen = max(l_q, l_k)
+        if (self.rope._cos_cached is None) or (seqlen > self.rope._cos_cached.size(0)):
+            self.rope._update_cos_sin_cache(
+                seqlen, device=q.device, dtype=q.dtype
+            )
+
         #positional embedding
         q, kv = self.rope(q, kv)
 
         k,v = kv.unbind(dim=2)
+        q = q.transpose(1,2)
+        k = k.transpose(1,2)
+        v = v.transpose(1,2)
 
-        out = flash_attn_func(
-            q, k, v,
-            window_size=(self.window_size - 1, 0),
-            causal=True
-        )
-        
+        if mask is not None:
+            if (l_k != l_q):
+                out = F.scaled_dot_product_attention(query=q,key=k,value=v, is_causal=True)
+            else:
+                attn_mask = mask & torch.tril(torch.ones(b_q,l_q,l_q)).to(dtype=torch.bool, device=q.device)
+                out = F.scaled_dot_product_attention(query=q,key=k,value=v, attn_mask=attn_mask)
+        else:
+            attn_mask = None
+            out = F.scaled_dot_product_attention(query=q,key=k,value=v, attn_mask=attn_mask)
+ 
         out = out.reshape(b_q, l_q, self.dim)
         out = self.o_proj(out)
         

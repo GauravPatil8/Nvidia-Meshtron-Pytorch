@@ -3,12 +3,13 @@ import torch.nn as nn
 from meshtron.VertexTokenizer import VertexTokenizer
 from pipeline.config_entities import ModelParams
 from pipeline.utils.model import get_model
+from pipeline.utils.data import get_max_seq_len
 
 class Inference:
     def __init__(self, model_params: ModelParams, weights_path: str):
-
-        self.tokenizer = VertexTokenizer(131, 1.0)
+        self.tokenizer = VertexTokenizer(128, 1.0)
         model_params.pad_token = self.tokenizer.PAD
+        self.model_params = model_params
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.model = get_model(model_params).to(self.device)
 
@@ -22,26 +23,30 @@ class Inference:
         self.model.load_state_dict(state["model_state_dict"])
 
 
-    def forward(self, point_cloud: torch.Tensor, face_count: torch.Tensor, quad_ratio: torch.Tensor):
+    def run(self, point_cloud: torch.Tensor, face_count: torch.Tensor, quad_ratio: torch.Tensor):
         """ Follows greedy decode approach
             point_cloud shape : N, 6
             face_count shape: [1]
             quad_ratio shape: [1]
         """
-        
-        decoder_input = torch.empty(1,9).fill_(self.tokentizer.SOS.item()).to(dtype=torch.int64, device=self.device)
+        point_cloud = point_cloud.to(self.device)
+        face_count = face_count.to(self.device)
+        quad_ratio = quad_ratio.to(self.device)
+        decoder_input = torch.empty(1,9).fill_(self.tokenizer.SOS.item()).to(dtype=torch.int64, device=self.device)
+        max_seq_len = 10377
+
 
         while True:
-            if decoder_input.size(1) == self.model_params.seq_len:
+            if decoder_input.size(1) == max_seq_len:
                 break
-
-            out = self.model(decoder_input, point_cloud, face_count, quad_ratio)
+            with torch.amp.autocast(device_type='cuda'):
+                out = self.model(decoder_input, point_cloud, face_count, quad_ratio, mask=None)
 
             o_proj = self.model.project(out[:, -1])
-            _, next_token = torch.argmax(o_proj, dim = 1)
+            next_token = torch.argmax(o_proj, dim = 1)
 
 
-            if next_token == self.tokentizer.EOS.item():
+            if next_token == self.tokenizer.EOS.item():
                 break
 
             decoder_input = torch.cat(

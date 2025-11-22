@@ -38,7 +38,7 @@ POINT_CLOUD = torch.randn([NUM_SAMPLES,128,6], dtype=torch.float16).to(device=DE
 QUAD_RATIO = torch.rand(NUM_SAMPLES,1).to(device=DEVICE, dtype=torch.float16)
 FACE_COUNT = torch.randint(5000, 15000, (NUM_SAMPLES,1)).to(device=DEVICE, dtype=torch.float16)
 TARGET = torch.cat([sub_input, torch.tensor([[tokenizer.EOS] * 9] * NUM_SAMPLES, dtype = torch.int64)],dim=-1).to(device=DEVICE)
-MASK = torch.tril(torch.ones((1, SEQ_LEN+9, SEQ_LEN+9))).type(torch.int64).to(device=DEVICE)
+MASK = torch.tril(torch.ones((1, SEQ_LEN+9, SEQ_LEN+9))).type(torch.bool).to(device=DEVICE)
 SCALER = torch.amp.GradScaler()
 def get_model():
 
@@ -80,22 +80,14 @@ def train(model: Meshtron, tokenizer: VertexTokenizer):
     model.train()
     g_step = 0
     optimizer = torch.optim.Adam(model.parameters(), LEARNING_RATE, eps=1e-9, weight_decay=1e-2)
-    warmup_scheduler = LambdaLR(
-        optimizer,
-        lr_lambda=lambda step: step / 15 if step < 15 else 1.0
-    )
-
-    cosine_scheduler = CosineAnnealingLR(
+    scaler = torch.amp.GradScaler()
+    loss_hist = list()
+    scheduler = CosineAnnealingLR(
         optimizer,
         T_max=85,  # total_iters - warmup_iters
-        eta_min=0.0
+        eta_min=0.003
     )
 
-    scheduler = SequentialLR(
-        optimizer,
-        schedulers=[warmup_scheduler, cosine_scheduler],
-        milestones=[15]
-    )
     loss_func = nn.CrossEntropyLoss(ignore_index=tokenizer.PAD.item(), label_smoothing=0.0).to(DEVICE)
     torch.autograd.set_detect_anomaly(True)
     for epoch in range(NUM_EPOCHS):
@@ -108,13 +100,18 @@ def train(model: Meshtron, tokenizer: VertexTokenizer):
                 # print(out_prob)
                 loss = loss_func(out_prob.view(-1, tokenizer.vocab_size), TARGET[i].view(-1))
             iter.set_postfix({"loss": f"{loss.item():6.3f}"})
-
-            loss.backward()
-            optimizer.step()
+            loss_hist.append(f"{loss.item():6.3f}")
+            scaler.scale(loss).backward()
+            scaler.unscale_(optimizer)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+            scaler.step(optimizer)
+            scaler.update()
             scheduler.step()
             optimizer.zero_grad(set_to_none=True)
             g_step+=1
-    
+    with open(os.path.join("/root/meshtron/Nvidia-Meshtron-Pytorch/pipeline/logs","loss.txt"),'w') as f:
+            for loss_abc in loss_hist:
+                f.write(f"{loss_abc}\n")
     return loss.item(), g_step
 
 def main():
@@ -149,7 +146,7 @@ def get_point_cloud_data(mesh_path: str):
 def test_inference():
     # Configure the model parameters based on the training model parameters
 
-    generator = Inference(ConfigurationManager.model_params, get_weights_path(ConfigurationManager.training_config, 25))
+    generator = Inference(ConfigurationManager.model_params(), get_weights_path(ConfigurationManager.training_config(), 25))
     mesh_dir = ConfigurationManager.dataset_config().original_mesh_dir
     monkey_obj = os.path.join(mesh_dir, 'suzanne.obj')
     cube_obj = os.path.join(mesh_dir,'cube.obj')
@@ -159,15 +156,17 @@ def test_inference():
 
     selected_obj = monkey_obj
 
-    points = get_point_cloud_data(selected_obj)
+    points = get_point_cloud_data(selected_obj).unsqueeze(0)
     face_count, quad_ratio = get_mesh_stats(selected_obj)
-    face_count = torch.tensor([face_count], dtype=torch.float32)
-    quad_ratio = torch.tensor([quad_ratio], dtype=torch.float32) 
+    face_count = torch.tensor(face_count, dtype=torch.float32).unsqueeze(0).unsqueeze(0)
+    quad_ratio = torch.tensor(quad_ratio, dtype=torch.float32).unsqueeze(0).unsqueeze(0) 
 
-    gen_point_cloud = generator(points, face_count, quad_ratio)
+    
+    gen_point_cloud = generator.run(points, face_count, quad_ratio)
 
     write_obj(gen_point_cloud, os.path.join(get_root_folder(), 'artifacts','generations',f'gen_mesh_{os.path.basename(selected_obj)}'))
 
 
 if __name__ == '__main__':
     main()
+    # test_inference()
