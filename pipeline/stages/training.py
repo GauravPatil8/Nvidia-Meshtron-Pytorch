@@ -4,7 +4,7 @@ import math
 import torch.nn as nn
 from tqdm import tqdm
 from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
-from pipeline.utils.common import logger_init
+from pipeline.utils.common import logger_init, get_root_folder
 from pipeline.utils.model import get_model, get_latest_weights_path, get_weights_path
 from pipeline.PrimitiveDataset import get_dataloaders
 from pipeline.config_entities import TrainingConfig, ModelParams, DatasetConfig, DataLoaderConfig
@@ -48,7 +48,6 @@ class Trainer(nn.Module):
 
     def __str__(self):
         return f"Training Stage f{Trainer}"
-
 
     def validate(self):
 
@@ -117,6 +116,9 @@ class Trainer(nn.Module):
                 
 
                     loss = self.loss_func(proj_out.view(-1, self.tokenizer.vocab_size), target.view(-1))
+                    
+                    with open(os.path.join(get_root_folder(),'pipeline','logs','loss.txt'), 'a') as f:
+                        f.write(f"{loss.item():0.6f}\n")
 
                 batch_iter.set_postfix({"loss": f"{loss.item():6.3f}"})
                 logger.info(f"Epoch: {epoch}, Iteration: {global_step:02d}, loss: {loss}")
