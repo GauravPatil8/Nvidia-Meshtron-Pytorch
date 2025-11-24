@@ -46,10 +46,7 @@ from meshtron.VertexTokenizer import VertexTokenizer
 ```
 ### Initialize tokenizer
 ```python
-tokenizer = VertexTokenizer(
-    bins=128,
-    box_dim=1.0
-)
+tokenizer = VertexTokenizer(bins=128)
 ```
 ### Initialize conditioning encoder (Perceiver-based point cloud encoder)
 ```python
@@ -119,5 +116,6 @@ This command trains a MeshTron-Small model on the included primitive shapes data
 For questions and discussions, please open an issue on GitHub.
 
 ---
+
 
 **Note**: This is an unofficial implementation. For official code and models, please visit the [official project page](https://research.nvidia.com/labs/dir/meshtron).
