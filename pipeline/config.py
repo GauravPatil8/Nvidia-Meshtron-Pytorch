@@ -19,15 +19,15 @@ class ConfigurationManager:
             root = get_path(PROJECT_ROOT, 'artifacts'),
             dataset_storage_dir = get_path(PROJECT_ROOT, 'artifacts', 'dataset'),
             meshes = get_path(PROJECT_ROOT, 'mesh'),
-            dataset_len = 10000
+            dataset_len = 100
         )
     
     @staticmethod
     def training_config():
         PROJECT_ROOT = get_root_folder()
         return TrainingConfig(
-            num_epochs=20,
-            learning_rate=0.003,
+            num_epochs=1000,
+            learning_rate=1e-4,
             label_smoothing= 0.1,
             model_folder=get_path(PROJECT_ROOT, "artifacts", "models"),
             model_basename="meshtron",
@@ -45,8 +45,10 @@ class ConfigurationManager:
             head_dim = 32,
             window_size = 256,
             dim_ff = 1536,
-            hierarchy = "2@1 4@3 8@9 4@3 2@1",
-            dropout = 0.3,
+            shortening_factor= 3,
+            num_blocks_per_layer=[4,8,12],
+            ff_dropout = 0.0,
+            attn_dropout = 0.0,
             pad_token = 0,
             condition_every_n_layers = 4,
             encoder = None
@@ -60,7 +62,6 @@ class ConfigurationManager:
             original_mesh_dir=get_path(PROJECT_ROOT, 'mesh'),
             point_cloud_size=8192//2,
             num_of_bins=128,
-            bounding_box_dim=1.0,
             std_points=0.01,
             mean_points=0.0,
             mean_normals=0.0,
@@ -77,7 +78,8 @@ class ConfigurationManager:
             pin_memory=True,
             persistent_workers=True
         )
-    @staticmethod 
+    
+    @staticmethod
     def conditioning_config():
         return ConditioningConfig(
             num_freq_bands = 4,
@@ -92,8 +94,8 @@ class ConfigurationManager:
             cross_dim_head = 32,
             latent_dim_head = 32,
             num_classes = 1,
-            attn_dropout = 0.2,
-            ff_dropout = 0.1,
+            attn_dropout = 0.0,
+            ff_dropout = 0.0,
             weight_tie_layers = 2,
             fourier_encode_data = True,
             self_per_cross_attn = 1,

@@ -3,7 +3,8 @@ import math
 import torch.nn as nn
 from typing import Optional
 import torch.nn.functional as F
-from meshtron.Attention import Attention
+from meshtron._attention import Attention
+from rotary_embedding_torch import RotaryEmbedding
 
 def pad_to_multiple(tensor, multiple, dim = -1, value = 0):
         seq_len = tensor.shape[dim]
@@ -14,37 +15,6 @@ def pad_to_multiple(tensor, multiple, dim = -1, value = 0):
         pad_offset = (0,) * (-1 - dim) * 2
         return F.pad(tensor, (*pad_offset, 0, remainder), value = value)
 
-def parse_hierarchy(hierarchy: str):
-    """Parse hierarchy of the entire hourglass transformer.
-
-    Parameters:
-        hierarchy (str): A space-separated string specifying the transformer hierarchy.
-                        Format: "pre-block funnel post-block, layer: n_blocks @ shortening factor (2@1)"
-                        Example: "2@1 4@2 6@4 8@8 6@4 4@2 2@1"
-                            - pre-block  : "2@1"
-                            - funnel     : "4@2 6@4 8@8 6@4 4@2"
-                            - post-block : "2@1"
-
-    Returns:
-        - relative_shortening_factor (list[int]) - "List of relative scale factors for only the funnel levels."
-        - n_blocks (list[int]) - "List of number of blocks at each funnel level."
-        - number_of_pre_post_blocks (int) - " Number of blocks in the pre and post blocks."
-    """
-
-    levels = hierarchy.split(' ')
-    if levels != levels[::-1]:
-        raise ValueError("Hierarchy ain't right brev")
-    layers = [(x.split('@')) for x in levels[:1 + (len(levels) // 2)]]
-    n_blocks = [int(x[0]) for x in layers]
-    total_sf = [int(x[1]) for x in layers]
-
-    relative_sf = []
-    for current, prev in zip(total_sf, [1] + total_sf[:-1]):
-        if current % prev !=0:
-            raise ValueError(f"Aye brev fix your hierarchy,cause Hierarchy is not divisible by previous level: {current}, {prev}")
-        relative_sf.append(current // prev)
-
-    return relative_sf[1:], n_blocks[1:], n_blocks[0]
 
 def SwiGLU(x: torch.Tensor):
     "SwiGLU activation function"
@@ -60,24 +30,20 @@ class LinearUpSample(nn.Module):
 
     def forward(self, x):
         b, s, _ = x.shape
-        shift = self.sf - 1
         x = self.linear(x)
         x = x.view(b, s * self.sf, self.dim)
-        return F.pad(x, (0, 0, shift, -shift), value=0.) #causal padding for preventing leak
+        return x
 
 class LinearDownSample(nn.Module):
-    def __init__(self, shorten_factor: int, dim: int, pad_token:int):
+    def __init__(self, shorten_factor: int, dim: int):
         super().__init__()
         self.sf = shorten_factor
         self.dim = dim
         self.linear = nn.Linear(dim*shorten_factor, dim)
-        self.pad_token = pad_token
 
     def forward(self, x):
-        b, _, _ = x.shape
-        x = pad_to_multiple(x, self.sf, dim=1, value=self.pad_token)
-        _, s_new, _ = x.shape
-        return self.linear(x.view(b, s_new // self.sf, self.dim*self.sf))
+        b, s, _ = x.shape
+        return self.linear(x.view(b, s // self.sf, self.dim*self.sf))
     
 class InputEmbedding(nn.Module):
     def __init__(self, num_tokens: int, dim: int):
@@ -127,19 +93,21 @@ class Transformer(nn.Module):
                  head_dim: int,
                  dim_ff: int,
                  window_size:int, 
-                 dropout: float,
+                 ff_dropout: float,
+                 attn_dropout:float,
+                 rope: RotaryEmbedding,
                  conditioning_flag: bool = False,
                  ):
         super().__init__()
         self.conditioning_flag = conditioning_flag
         if conditioning_flag:
-            self.residuals = nn.ModuleList([ResidualConnection(dim, dropout) for _ in range(3)])
+            self.residuals = nn.ModuleList([ResidualConnection(dim, ff_dropout) for _ in range(3)])
         else:
-            self.residuals = nn.ModuleList([ResidualConnection(dim, dropout) for _ in range(2)])
+            self.residuals = nn.ModuleList([ResidualConnection(dim, ff_dropout) for _ in range(2)])
 
-        self.dropout = dropout
-        self.attention = Attention(dim, num_heads, head_dim, window_size)
-        self.FFN = FeedForwardNetwork(dim, dim_ff, dropout, SwiGLU)
+        self.dropout = ff_dropout
+        self.attention = Attention(dim, num_heads, head_dim, window_size, rope, attn_dropout)
+        self.FFN = FeedForwardNetwork(dim, dim_ff, ff_dropout, SwiGLU)
 
     def forward(self,*, x: torch.Tensor, conditions: Optional[torch.Tensor], mask: Optional[torch.Tensor] = None):
         x = self.residuals[0](x, lambda x: self.attention(q=x,k=x, v=x, mask=mask))
@@ -152,27 +120,20 @@ class Transformer(nn.Module):
         return x
 
 class Layer(nn.Module):
-
     def __init__(self,
                  *,
                  dim: int,
-                 shortening_factor: int,
-                 dropout: float,
+                 ff_dropout: float,
+                 attn_dropout: float,
                  n_heads: int,
                  head_dim: int,
                  num_blocks:int,
                  d_ff: int,
                  window_size:int,
-                 pad_token:int, 
-                 downflag: bool = False,
+                 rope: RotaryEmbedding,
                  condition_every_n_layers: bool = False
                  ):
         super().__init__()
-        self.sf = shortening_factor
-        self.dropout = dropout
-        self.downsample = LinearDownSample(self.sf, dim, pad_token=pad_token)
-        self.residuals = ResidualConnection(dim, dropout)
-        self.downflag = downflag
         self.blocks = nn.ModuleList([
             Transformer(
                 dim,
@@ -180,16 +141,14 @@ class Layer(nn.Module):
                 head_dim,
                 d_ff,
                 window_size,
-                dropout,
+                ff_dropout,
+                attn_dropout,
+                rope,
                 conditioning_flag=(((i+1) % condition_every_n_layers) == 0)
             ) for i in range(num_blocks)
         ])
 
     def forward(self, x, conditions, mask):
-        
-        if self.downflag:
-            x = self.downsample(x)
-
         #tranformer blocks   
         for block in self.blocks:
             x = block(x = x, conditions = conditions, mask = mask)
@@ -201,70 +160,39 @@ def build_hourglass_valley(
         dim:int,
         num_of_heads: int,
         head_dim: int,
-        h_sfs: list[int],
-        h_nl: list[int],
+        sf: int,
+        num_blocks: list[int],
         d_ff: int,
         window_size:int,
-        dropout: float,
-        pad_token: int,
+        ff_dropout:float,
+        attn_dropout:float,
+        rope: RotaryEmbedding,
         condition_every_n_layers: bool
     ) -> nn.ModuleList:
     
-    assert len(h_sfs) == len(h_nl) >= 1
+    assert len(num_blocks) == 3
 
-    down_layers = nn.ModuleList([])
+    layer_config = dict(
+        dim=dim,
+        ff_dropout=ff_dropout,
+        attn_dropout=attn_dropout,
+        n_heads=num_of_heads,
+        head_dim=head_dim,
+        d_ff=d_ff,
+        window_size=window_size,
+        rope = rope,
+        condition_every_n_layers=condition_every_n_layers,
+    )
 
-   #funneling down
-    for sf, n_layers in list(zip(h_sfs, h_nl))[:-1]:
-        layer = Layer(
-            dim=dim,
-            shortening_factor=sf,
-            dropout=dropout,
-            n_heads=num_of_heads,
-            head_dim=head_dim,
-            num_blocks=n_layers,
-            d_ff=d_ff,
-            window_size=window_size,
-            pad_token=pad_token,
-            downflag=True,
-            condition_every_n_layers=condition_every_n_layers,
-        )
-        down_layers.append(layer)
-
-    #middle layer
-    center_layer = Layer(
-            dim=dim,
-            shortening_factor=h_sfs[-1],
-            dropout=dropout,
-            n_heads=num_of_heads,
-            head_dim=head_dim,
-            num_blocks=h_nl[-1],
-            d_ff=d_ff,
-            window_size=window_size,
-            pad_token=pad_token,
-            downflag=True,
-            condition_every_n_layers=condition_every_n_layers,
-        )
+    pre_post_blocks_num = num_blocks[0]
+    down_blocks_num = num_blocks[1]
+    centre_blocks_num = num_blocks[2]
 
 
-    #funneling up
-    up_sf = [sf for sf in reversed(h_sfs)][1:]
-    up_nl = [nl for nl in reversed(h_nl)][1:]
-    up_layers = nn.ModuleList([])
-    for sf, n_layers in reversed(list(zip(up_sf, up_nl))):
-        layer = Layer(
-            dim=dim,
-            shortening_factor=sf,
-            dropout=dropout,
-            n_heads=num_of_heads,
-            head_dim=head_dim,
-            num_blocks=n_layers,
-            d_ff=d_ff,
-            window_size=window_size,
-            pad_token=pad_token,
-            downflag=False,
-            condition_every_n_layers=condition_every_n_layers,
-        )
-        up_layers.append(layer)
+    pre_layer = Layer(num_blocks=pre_post_blocks_num, **layer_config)
+    down_valley = Layer(num_blocks=down_blocks_num, **layer_config)
+    center_layer = Layer(num_blocks=centre_blocks_num, **layer_config)
+    up_valley = Layer(num_blocks=down_blocks_num, **layer_config)
+    post_layer = Layer(num_blocks=pre_post_blocks_num, **layer_config)
 
-    return down_layers, center_layer, up_layers
+    return pre_layer, down_valley, center_layer, up_valley, post_layer

@@ -12,8 +12,7 @@ class DatasetConfig:
     dataset_dir: str
     original_mesh_dir: str
     point_cloud_size: int 
-    num_of_bins: int 
-    bounding_box_dim: float
+    num_of_bins: int
     std_points:float
     mean_points:float 
     mean_normals:float
@@ -49,8 +48,10 @@ class ModelParams:
     head_dim: int
     window_size: int
     dim_ff: int
-    hierarchy: str
-    dropout: float
+    shortening_factor: int
+    num_blocks_per_layer: list
+    ff_dropout: float
+    attn_dropout: float
     pad_token: int
     condition_every_n_layers: int
     encoder: ConditioningEncoder

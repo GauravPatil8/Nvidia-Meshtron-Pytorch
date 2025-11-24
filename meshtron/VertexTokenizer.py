@@ -1,13 +1,13 @@
 import torch
 import trimesh
 import numpy as np
-from pipeline.utils.data import extract_faces_bot_top, get_vertices, lex_sort_verts, normalize_mesh_to_bbox
+from pipeline.utils.data import extract_faces_bot_top, get_vertices, lex_sort_verts, normalize_verts_to_box
 
 class VertexTokenizer:
 
-    def __init__(self, bins: int, box_dim: float = 1.0):
+    def __init__(self, bins: int):
         "Quantize and add special tokens"
-        self.box_dim = box_dim
+        self.box_dim = 1.0
         self.bins = bins
 
         #Special tokens

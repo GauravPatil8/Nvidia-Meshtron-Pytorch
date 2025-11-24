@@ -14,8 +14,10 @@ def get_model(model_params: ModelParams):
             head_dim=model_params.head_dim,
             window_size=model_params.window_size,
             d_ff= model_params.dim_ff,
-            hierarchy= model_params.hierarchy,
-            dropout= model_params.dropout,
+            shortening_factor=model_params.shortening_factor,
+            num_blocks_per_layers=model_params.num_blocks_per_layer,
+            ff_dropout= model_params.ff_dropout,
+            attn_dropout=model_params.attn_dropout,
             pad_token=model_params.pad_token,
             condition_every_n_layers= model_params.condition_every_n_layers,
             encoder=get_encoder(ConfigurationManager.conditioning_config())

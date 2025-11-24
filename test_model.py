@@ -4,7 +4,7 @@ from meshtron.VertexTokenizer import VertexTokenizer
 from torch.optim.lr_scheduler import LambdaLR, CosineAnnealingLR, SequentialLR
 from pipeline.stages.inference import Inference
 from pipeline.config import ConfigurationManager
-from pipeline.utils.data import get_mesh_stats, normalize_mesh_to_bbox, add_gaussian_noise, set_zero_vector, write_obj
+from pipeline.utils.data import get_mesh_stats, normalize_verts_to_box, add_gaussian_noise, set_zero_vector, write_obj
 from pipeline.utils.model import get_weights_path
 from pipeline.utils.common import get_root_folder
 from tqdm import tqdm
@@ -26,7 +26,7 @@ torch.manual_seed(123)
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 LEARNING_RATE = 0.01
 print(DEVICE)
-tokenizer = VertexTokenizer(128, 1.0)
+tokenizer = VertexTokenizer(128)
 
 
 NUM_EPOCHS = 5
@@ -69,8 +69,10 @@ def get_model():
                     head_dim=12,
                     window_size= 3,
                     d_ff=12,
-                    hierarchy="4@1 8@3 12@9 8@3 4@1",
-                    dropout=0.2,
+                    shortening_factor=3,
+                    num_blocks_per_layers=[4,8,12],
+                    ff_dropout=0.2,
+                    attn_dropout=0.1,
                     pad_token=tokenizer.PAD.item(),
                     condition_every_n_layers=4,
                     encoder=encoder,
@@ -126,7 +128,7 @@ def main():
 
 def get_point_cloud_data(mesh_path: str):
     mesh = trimesh.load_mesh(mesh_path, file_type = 'obj')
-    vertices = normalize_mesh_to_bbox(mesh_path,1.0)
+    vertices = normalize_verts_to_box(mesh_path)
 
     mesh.vertices = vertices
 

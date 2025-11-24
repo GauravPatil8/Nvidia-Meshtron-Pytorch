@@ -4,6 +4,7 @@ import random
 import trimesh
 import numpy as np
 from pathlib import Path
+
 def load_obj(filepath):
     """Load vertices and faces from an OBJ file."""
     vertices = []
@@ -66,13 +67,12 @@ def save_obj(filepath, vertices, faces, header):
         for face in faces:
             f.write("f " + " ".join(str(idx) for idx in face) + "\n")
 
-def normalize_mesh_to_bbox(file_path: str,box_size_dim: float = 1.0):
+def normalize_verts_to_box(file_path: str):
     """
-    Normalize a mesh so that it fits inside a cube bounding box of size `box_size_dim` and zero centers it.
+    Normalize vertices of mesh so that it fits inside a cube bounding box of size 1.0 and zero centers it.
 
     Parameters:
         mesh (trimesh.Trimesh): Input mesh
-        box_size_dim (float): Target cube side length
     """
 
     vertices = get_vertices(file_path)
@@ -85,7 +85,7 @@ def normalize_mesh_to_bbox(file_path: str,box_size_dim: float = 1.0):
   
     dimension = max_coord - min_coord
     
-    scale = box_size_dim / np.max(dimension)
+    scale = 1.0 / np.max(dimension)
 
     vertices *= scale
 

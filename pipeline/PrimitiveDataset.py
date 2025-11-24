@@ -8,7 +8,7 @@ import trimesh
 from torch.utils.data import Dataset, DataLoader, random_split
 from pipeline.utils.common import get_path
 from meshtron.VertexTokenizer import VertexTokenizer
-from pipeline.utils.data import get_mesh_stats, get_max_seq_len, normalize_mesh_to_bbox, add_gaussian_noise, set_zero_vector
+from pipeline.utils.data import get_mesh_stats, get_max_seq_len, normalize_verts_to_box, add_gaussian_noise, set_zero_vector
 from pipeline.config_entities import DatasetConfig, DataLoaderConfig
 
 class PrimitiveDataset(Dataset):
@@ -18,8 +18,7 @@ class PrimitiveDataset(Dataset):
                   original_mesh_dir: str,
                   tokenizer: VertexTokenizer, 
                   point_cloud_size: int = 2048, 
-                  num_of_bins: int = 1024, 
-                  bounding_box_dim: float = 1.0,
+                  num_of_bins: int = 1024,
                   std_points:float,
                   mean_points:float,
                   mean_normals:float,
@@ -44,7 +43,7 @@ class PrimitiveDataset(Dataset):
         self.max_seq_len = get_max_seq_len(original_mesh_dir)
         self.num_points = point_cloud_size
         self.num_of_bins = num_of_bins
-        self.bounding_box_dim = bounding_box_dim
+        self.bounding_box_dim = 1.0
         self.files = [get_path(root, file) for root, _ , files in os.walk(dataset_dir) for file in files]
         self.tokenizer = tokenizer
         self.EOS = self.tokenizer.EOS
@@ -61,7 +60,7 @@ class PrimitiveDataset(Dataset):
 
         mesh = trimesh.load_mesh(self.files[index])# returns triangulated mesh by default
         
-        vertices = normalize_mesh_to_bbox(self.files[index], self.bounding_box_dim)
+        vertices = normalize_verts_to_box(self.files[index])
 
         mesh.vertices = vertices
 
@@ -125,14 +124,13 @@ def causal_mask(size):
 
 def get_dataloaders(dataset_config: DatasetConfig, loader_config: DataLoaderConfig):
     """Returns Train and test split dataloaders and VertexTokenizer"""
-    vertex_tokenizer = VertexTokenizer(dataset_config.num_of_bins, dataset_config.bounding_box_dim)
+    vertex_tokenizer = VertexTokenizer(dataset_config.num_of_bins)
     dataset = PrimitiveDataset(
         dataset_dir=dataset_config.dataset_dir,
         original_mesh_dir=dataset_config.original_mesh_dir,
         tokenizer=vertex_tokenizer,
         point_cloud_size=dataset_config.point_cloud_size,
         num_of_bins=dataset_config.num_of_bins,
-        bounding_box_dim=dataset_config.bounding_box_dim,
         std_points = dataset_config.std_points,
         mean_points = dataset_config.mean_points,
         mean_normals=dataset_config.mean_normals,
