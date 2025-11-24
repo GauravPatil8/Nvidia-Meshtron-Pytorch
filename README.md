@@ -15,8 +15,8 @@ MeshTron is a autoregressive mesh generation model capable of generating high-qu
 
 ### Requirements
 
-- Python 3.10+
-- PyTorch 2.7+
+- Python 3.12
+- PyTorch 2.8+
 - CUDA 11.8+ (for GPU acceleration)
 - Additional dependencies listed in `requirements.txt`
 ## 1.Installation
@@ -28,7 +28,7 @@ cd Nvidia-Meshtron-Pytorch
 
 ### Create conda environment
 ```bash
-conda create -n meshtron python=3.10
+conda create -n meshtron python=3.12
 conda activate meshtron
 ```
 ### Install dependencies
@@ -84,8 +84,10 @@ model = Meshtron(
     head_dim=12,
     window_size=3,
     d_ff=12,
-    hierarchy="4@1 8@3 12@9 8@3 4@1",  # Hourglass structure
-    dropout=0.2,
+    shortening_factor = 3,
+    num_blocks_per_layers = [4,8,12]  # Hourglass structure
+    ff_dropout=0.2,
+    attn_dropout = 0.1,
     pad_token=tokenizer.PAD.item(),
     condition_every_n_layers=4,
     encoder=encoder
