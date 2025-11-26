@@ -23,7 +23,7 @@ def load_obj(filepath):
                 faces.append(face)
             else:
                 header.append(line.strip())  # keep comments, object names, etc.
-    return np.array(vertices), faces, header
+    return np.array(vertices), faces, " "
 
 def random_transform(vertices):
     """Apply random rotation + independent scaling to vertices."""
