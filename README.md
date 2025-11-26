@@ -13,12 +13,11 @@
 
 MeshTron is a autoregressive mesh generation model capable of generating high-quality, artist-like meshes with up to **64K faces** at **1024-level coordinate resolution** – over an order of magnitude higher face count and 8× higher coordinate resolution than current state-of-the-art methods.
 
-### Requirements
-
-- Python 3.12
-- PyTorch 2.8+
-- CUDA 11.8+ (for GPU acceleration)
-- Additional dependencies listed in `requirements.txt`
+* Python 3.12
+* PyTorch 2.8+
+* CUDA 11.8+ (for GPU acceleration)
+* **Operating System: Linux is required** due to the use of the **Flash Attention** library, which relies on platform-specific CUDA kernels.
+* Additional dependencies listed in `requirements.txt`
 ## 1.Installation
 ### Clone the repository
 ```bash
@@ -51,42 +50,42 @@ tokenizer = VertexTokenizer(bins=128)
 ### Initialize conditioning encoder (Perceiver-based point cloud encoder)
 ```python
 encoder = ConditioningEncoder(
-    input_channels=6,          # 3 for coordinates + 3 for normals
-    input_axis=1,
-    num_freq_bands=6,
-    max_freq=10.0,
-    depth=8,
-    num_latents=24,
-    latent_dim=24,
-    cross_heads=1,
-    latent_heads=2,
-    cross_dim_head=12,
-    latent_dim_head=12,
-    num_classes=1,
-    attn_dropout=0.2,
-    ff_dropout=0.1,
-    weight_tie_layers=6,
-    fourier_encode_data=True,
-    self_per_cross_attn=2,
-    final_classifier_head=False,
-    dim_ffn=12
+    num_freq_bands = 4,
+    depth = 4,
+    max_freq = 6.0,
+    input_channels = 6,
+    input_axis = 1,
+    num_latents = 256,
+    latent_dim = 512,
+    cross_heads = 8,
+    latent_heads = 8,
+    cross_dim_head = 32,
+    latent_dim_head = 32,
+    num_classes = 1,
+    attn_dropout = 0.0,
+    ff_dropout = 0.0,
+    weight_tie_layers = 2,
+    fourier_encode_data = True,
+    self_per_cross_attn = 1,
+    final_classifier_head = False,
+    dim_ffn = 1024
 )
 ```
 ### Initialize MeshTron model
 ```python
 model = Meshtron(
-    dim=24,
-    embedding_size=131,        # vocab_size + special tokens
-    n_heads=2,
-    head_dim=12,
-    window_size=3,
-    d_ff=12,
-    shortening_factor = 3,
-    num_blocks_per_layers = [4,8,12]  # Hourglass structure
-    ff_dropout=0.2,
-    attn_dropout = 0.1,
-    pad_token=tokenizer.PAD.item(),
-    condition_every_n_layers=4,
+    dim = 512,
+    embedding_size = 131, #vocab size + special tokens
+    n_heads = 16,
+    head_dim = 32,
+    window_size = 256,
+    dim_ff = 1536,
+    shortening_factor= 3,
+    num_blocks_per_layer=[4,8,12], # hourglass structure
+    ff_dropout = 0.0,
+    attn_dropout = 0.0,
+    pad_token = 0,
+    condition_every_n_layers = 4,
     encoder=encoder
 )
 ```
