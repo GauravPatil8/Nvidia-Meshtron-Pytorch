@@ -19,16 +19,16 @@ class ConfigurationManager:
             root = get_path(PROJECT_ROOT, 'artifacts'),
             dataset_storage_dir = get_path(PROJECT_ROOT, 'artifacts', 'dataset'),
             meshes = get_path(PROJECT_ROOT, 'mesh'),
-            dataset_len = 100
+            dataset_len = 50
         )
     
     @staticmethod
     def training_config():
         PROJECT_ROOT = get_root_folder()
         return TrainingConfig(
-            num_epochs=1000,
+            num_epochs=75,
             learning_rate=1e-4,
-            label_smoothing= 0.1,
+            label_smoothing= 0.0,
             model_folder=get_path(PROJECT_ROOT, "artifacts", "models"),
             model_basename="meshtron",
             preload="latest",
@@ -72,7 +72,7 @@ class ConfigurationManager:
     def dataloader_config():
         return DataLoaderConfig(
             train_ratio=0.9,
-            batch_size=12,
+            batch_size=9,
             num_workers=2,
             shuffle=True,
             pin_memory=True,
