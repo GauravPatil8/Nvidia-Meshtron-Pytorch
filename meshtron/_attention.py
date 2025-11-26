@@ -26,7 +26,8 @@ class Attention(nn.Module):
             x: Torch.tensor((batch, seq_len, dim))
             mask: (batch, seq_len) or (batch, 1, seq_len, seq_len)
         """
-        
+        is_self_attn = (q is k)
+
         b_q, l_q, _ = q.size()
         b_k, l_k, _ = k.size()
         b_v, l_v, _ = v.size()
@@ -39,15 +40,28 @@ class Attention(nn.Module):
         v = self.v_proj(v).view(b_v, l_v, h, d)
 
         #positional embedding
-        q = self.rope.rotate_queries_or_keys(q).transpose(1,2)
-        k = self.rope.rotate_queries_or_keys(k).transpose(1,2)
+        q = self.rope.rotate_queries_or_keys(q)
+
+        if is_self_attn:
+            k = self.rope.rotate_queries_or_keys(k)
+
+        q = q.transpose(1,2)
+        k = k.transpose(1,2)
+
+        if is_self_attn:
+            causal = True
+            window_size = (self.window_size - 1, 0)
+        else:
+            causal = False
+            window_size = (-1,-1)
 
         out = flash_attn_func(
             q, k, v,
-            window_size=(self.window_size - 1, 0),
+            window_size=window_size,
             dropout_p = self.dropout_p,
-            causal=True
+            causal=causal
         )
+
         out = out.reshape(b_q, l_q, self.inner_dim)
         out = self.o_proj(out)
         
