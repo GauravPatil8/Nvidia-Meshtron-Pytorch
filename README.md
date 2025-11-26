@@ -12,12 +12,12 @@
 ## Overview
 
 MeshTron is a autoregressive mesh generation model capable of generating high-quality, artist-like meshes with up to **64K faces** at **1024-level coordinate resolution** – over an order of magnitude higher face count and 8× higher coordinate resolution than current state-of-the-art methods.
-
-* Python 3.12
-* PyTorch 2.8+
-* CUDA 11.8+ (for GPU acceleration)
-* **Operating System: Linux is required** due to the use of the **Flash Attention** library, which relies on platform-specific CUDA kernels.
-* Additional dependencies listed in `requirements.txt`
+## Requirements
+- Python 3.12
+- PyTorch 2.8+
+- CUDA 11.8+ (for GPU acceleration)
+- **Operating System: Linux is required** due to the use of the **Flash Attention** library, which relies on platform-specific CUDA kernels.
+- Additional dependencies listed in `requirements.txt`
 ## 1.Installation
 ### Clone the repository
 ```bash
@@ -84,7 +84,7 @@ model = Meshtron(
     num_blocks_per_layer=[4,8,12], # hourglass structure
     ff_dropout = 0.0,
     attn_dropout = 0.0,
-    pad_token = 0,
+    pad_token = tokenizer.PAD.item(),
     condition_every_n_layers = 4,
     encoder=encoder
 )
@@ -118,3 +118,4 @@ For questions and discussions, please open an issue on GitHub.
 
 
 **Note**: This is an unofficial implementation. For official code and models, please visit the [official project page](https://research.nvidia.com/labs/dir/meshtron).
+
