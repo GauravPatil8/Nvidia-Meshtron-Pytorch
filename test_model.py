@@ -5,7 +5,7 @@ from torch.optim.lr_scheduler import LambdaLR, CosineAnnealingLR, SequentialLR
 from pipeline.stages.inference import Inference
 from pipeline.config import ConfigurationManager
 from pipeline.utils.data import get_mesh_stats, normalize_verts_to_box, add_gaussian_noise, set_zero_vector, write_obj
-from pipeline.utils.model import get_weights_path
+from pipeline.utils.model import get_weights_path, get_latest_weights_path
 from pipeline.utils.common import get_root_folder
 from tqdm import tqdm
 import torch
@@ -150,8 +150,7 @@ def get_point_cloud_data(mesh_path: str):
 
 def test_inference():
     # Configure the model parameters based on the training model parameters
-
-    generator = Inference(ConfigurationManager.model_params, get_weights_path(ConfigurationManager.training_config, 25))
+    generator = Inference(ConfigurationManager.model_params(), get_latest_weights_path(ConfigurationManager.training_config())).to(DEVICE)
     mesh_dir = ConfigurationManager.dataset_config().original_mesh_dir
     monkey_obj = os.path.join(mesh_dir, 'suzanne.obj')
     cube_obj = os.path.join(mesh_dir,'cube.obj')
@@ -159,17 +158,19 @@ def test_inference():
     sphere_obj = os.path.join(mesh_dir,'sphere.obj')
     torus_obj = os.path.join(mesh_dir,'torus.obj')
 
-    selected_obj = monkey_obj
+    selected_obj = cone_obj
 
     points = get_point_cloud_data(selected_obj)
+    points = points.unsqueeze(0)
     face_count, quad_ratio = get_mesh_stats(selected_obj)
     face_count = torch.tensor([face_count], dtype=torch.float32)
     quad_ratio = torch.tensor([quad_ratio], dtype=torch.float32) 
 
-    gen_point_cloud = generator(points, face_count, quad_ratio)
+    gen_point_cloud = generator.run(points, face_count, quad_ratio)
 
     write_obj(gen_point_cloud, os.path.join(get_root_folder(), 'artifacts','generations',f'gen_mesh_{os.path.basename(selected_obj)}'))
 
 
 if __name__ == '__main__':
-    main()
+    # main()
+    test_inference()
