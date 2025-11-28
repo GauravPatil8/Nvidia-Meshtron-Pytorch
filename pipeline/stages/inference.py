@@ -32,7 +32,7 @@ class Inference(nn.Module):
 
     def run(self, point_cloud: torch.Tensor, face_count: torch.Tensor, quad_ratio: torch.Tensor):
         """ Follows greedy decode approach
-            point_cloud shape : N, 6
+            point_cloud shape : [1, N, 6]
             face_count shape: [1]
             quad_ratio shape: [1]
         """
