@@ -45,21 +45,24 @@ class Inference(nn.Module):
         while True:
             if decoder_input.size(1) == 10377:
                 break
-            with torch.amp.autocast('cuda', dtype=torch.float16):
-                out = self.model(decoder_input, point_cloud, face_count, quad_ratio, None)
 
-            logits = self.model.project(out[:, -1])
+            with torch.no_grad():
+                with torch.amp.autocast('cuda', dtype=torch.float16):
+                    out = self.model(decoder_input, point_cloud, face_count, quad_ratio, None)
 
-            filtered_logits = top_k(logits, thres=0.7)
+            logits = self.model.project(out[:, decoder_input.shape[-1] - 9])
+
+            filtered_logits = top_k(logits, thres=0.9)
             probs = F.softmax(filtered_logits, dim=-1)
             next_token = torch.multinomial(probs, num_samples=1).item()
-
+            
+            print(next_token)
             if next_token == self.tokenizer.EOS.item():
                 break
 
-            next_token = torch.tensor([[next_token]], device=self.device, dtype=torch.long)
+            next_token = torch.tensor([[next_token]], device=self.device, dtype=torch.int64)
             decoder_input = torch.cat([decoder_input, next_token], dim=1)
 
-        coords = self.tokenizer.decode(decoder_input)
-
+        coords = self.tokenizer.decode(decoder_input[:, 9:])
+        
         return coords
