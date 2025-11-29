@@ -2,6 +2,7 @@ trimesh==4.6.8
 tqdm==4.67.1
 numpy==2.0.1
 perceiver-pytorch==0.8.8
+fastapi==0.122.0
 scipy
 rotary-embedding-torch
 https://github.com/Dao-AILab/flash-attention/releases/download/v2.8.3/flash_attn-2.8.3+cu12torch2.8cxx11abiTRUE-cp312-cp312-linux_x86_64.whl
