@@ -41,11 +41,11 @@ pip install -r requirements.txt
 import torch
 from meshtron.model import Meshtron
 from meshtron.encoder_conditioning import ConditioningEncoder
-from meshtron.VertexTokenizer import VertexTokenizer
+from meshtron.mesh_tokenizer import VertexTokenizer
 ```
 ### Initialize tokenizer
 ```python
-tokenizer = VertexTokenizer(bins=128)
+tokenizer = MeshTokenizer(bins=128)
 ```
 ### Initialize conditioning encoder (Perceiver-based point cloud encoder)
 ```python

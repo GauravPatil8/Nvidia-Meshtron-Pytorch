@@ -6,7 +6,7 @@ from tqdm import tqdm
 from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
 from pipeline.utils.common import logger_init, get_root_folder
 from pipeline.utils.model import get_model, get_latest_weights_path, get_weights_path
-from pipeline.PrimitiveDataset import get_dataloaders
+from pipeline.primitive_dataset import get_dataloaders
 from pipeline.config_entities import TrainingConfig, ModelParams, DatasetConfig, DataLoaderConfig
 
 
