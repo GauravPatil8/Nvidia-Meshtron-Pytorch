@@ -221,24 +221,24 @@ def write_obj(point_cloud, file_name):
         for face in face_list:
             f.write(f"f {' '.join(str(idx) for idx in face)}\n")       
 
-# def get_point_cloud_data(mesh_path: str):
-#     mesh = trimesh.load_mesh(mesh_path, file_type = 'obj')
-#     vertices = normalize_verts_to_box(mesh_path)
+def get_point_cloud_data(mesh_path: str):
+    mesh = trimesh.load_mesh(mesh_path, file_type = 'obj')
+    vertices = normalize_verts_to_box(mesh_path)
 
-#     mesh.vertices = vertices
+    mesh.vertices = vertices
 
-#     #sampling points on the surface of the bounded mesh (N, 3)
-#     point_cloud, face_indices = trimesh.sample.sample_surface(mesh, 8192//2)
+    #sampling points on the surface of the bounded mesh (N, 3)
+    point_cloud, face_indices = trimesh.sample.sample_surface(mesh, 8192//2)
 
-#     #point cloud & point normals
-#     point_cloud = torch.from_numpy(point_cloud).to(dtype=torch.float32)
-#     point_normals = torch.from_numpy(mesh.face_normals[face_indices]).to(dtype=torch.float32)
+    #point cloud & point normals
+    point_cloud = torch.from_numpy(point_cloud).to(dtype=torch.float32)
+    point_normals = torch.from_numpy(mesh.face_normals[face_indices]).to(dtype=torch.float32)
 
-#     # augmentation
-#     point_cloud = add_gaussian_noise(point_cloud, mean=0.0, std=0.01) #according to paper: mean = 0.0, std = 0.01
-#     point_normals = add_gaussian_noise(point_normals, mean=0.0, std=0.03)
-#     point_normals = set_zero_vector(points=point_normals, rate=0.3, size=point_normals.shape[1])
+    # augmentation
+    point_cloud = add_gaussian_noise(point_cloud, mean=0.0, std=0.01) #according to paper: mean = 0.0, std = 0.01
+    point_normals = add_gaussian_noise(point_normals, mean=0.0, std=0.03)
+    point_normals = set_zero_vector(points=point_normals, rate=0.3, size=point_normals.shape[1])
 
-#     points = torch.cat((point_cloud, point_normals), dim=1)
+    points = torch.cat((point_cloud, point_normals), dim=1)
 
-#     return points, point_cloud
+    return points, point_cloud
