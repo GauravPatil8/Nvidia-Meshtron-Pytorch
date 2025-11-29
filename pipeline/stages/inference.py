@@ -55,12 +55,13 @@ class Inference(nn.Module):
 
             filtered_logits = top_k(logits, thres=0.9)
             probs = F.softmax(filtered_logits, dim=-1)
-            next_token = torch.multinomial(probs, num_samples=1).item()
+            next_token = torch.multinomial(probs, num_samples=1)
 
             #return coord to stream api
-            coord = self.tokenizer.dequantize(next_token)
+            coord = self.tokenizer.dequantize(next_token).item()
             yield coord
 
+            next_token = next_token.item()
             if next_token == self.tokenizer.EOS.item():
                 break
 
@@ -68,7 +69,6 @@ class Inference(nn.Module):
             decoder_input = torch.cat([decoder_input, next_token], dim=1)
 
         coords = self.tokenizer.decode(decoder_input[:, 9:])
-        
         return coords
 
 def get_generator(weights_path: str):
