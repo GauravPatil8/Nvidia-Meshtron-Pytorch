@@ -92,9 +92,9 @@ class MeshTokenizer:
         "converts float values to discrete int bins"
         return (torch.clamp(torch.floor((sequence + (self.box_dim / 2)) * (self.bins / self.box_dim)), 0, self.bins - 1)).to(dtype=torch.int64)
 
-    def dequantize(self, token):
+    def dequantize(self, tokens: torch.Tensor):
         "converts integer bins to float values"
-        return (token.float() / (self.bins - 1)) * self.box_dim - (self.box_dim / 2)
+        return (tokens.float() / (self.bins - 1)) * self.box_dim - (self.box_dim / 2)
     
     def encode(self, mesh_path: str):
 
