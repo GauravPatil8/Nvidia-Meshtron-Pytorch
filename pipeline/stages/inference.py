@@ -1,8 +1,8 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from meshtron.VertexTokenizer import VertexTokenizer
-from pipeline.config_entities import ModelParams
+from meshtron.mesh_tokenizer import MeshTokenizer
+from pipeline.config import ConfigurationManager
 from pipeline.utils.model import get_model
 
 def top_k(logits, thres = 0.9):
@@ -13,9 +13,10 @@ def top_k(logits, thres = 0.9):
     return probs
     
 class Inference(nn.Module):
-    def __init__(self, model_params: ModelParams, weights_path: str):
+    def __init__(self, weights_path: str):
         super().__init__()
-        self.tokenizer = VertexTokenizer(128)
+        self.tokenizer = MeshTokenizer(128)
+        model_params = ConfigurationManager.model_params()
         model_params.pad_token = self.tokenizer.PAD.item()
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.model = get_model(model_params).to(self.device)
@@ -54,9 +55,13 @@ class Inference(nn.Module):
 
             filtered_logits = top_k(logits, thres=0.9)
             probs = F.softmax(filtered_logits, dim=-1)
-            next_token = torch.multinomial(probs, num_samples=1).item()
-            
-            print(next_token)
+            next_token = torch.multinomial(probs, num_samples=1)
+
+            #return coord to stream api
+            coord = self.tokenizer.dequantize(next_token).item()
+            yield coord
+
+            next_token = next_token.item()
             if next_token == self.tokenizer.EOS.item():
                 break
 
@@ -64,5 +69,7 @@ class Inference(nn.Module):
             decoder_input = torch.cat([decoder_input, next_token], dim=1)
 
         coords = self.tokenizer.decode(decoder_input[:, 9:])
-        
         return coords
+
+def get_generator(weights_path: str):
+    return Inference(weights_path=weights_path).to(device=torch.device("cuda" if torch.cuda.is_available() else "cpu"))

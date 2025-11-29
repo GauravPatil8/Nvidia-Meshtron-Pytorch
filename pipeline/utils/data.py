@@ -91,9 +91,9 @@ def normalize_verts_to_box(file_path: str):
 
     return torch.from_numpy(vertices)
 
-def map_to_bins(points: np.array, bins: int, box_dim: float = 1.0):
-    "converts float values to discrete int32 bins"
-    return np.clip(np.floor((points + (box_dim / 2)) * (bins / box_dim)), 0, bins - 1)
+# def map_to_bins(points: np.array, bins: int, box_dim: float = 1.0):
+#     "converts float values to discrete int32 bins"
+#     return np.clip(np.floor((points + (box_dim / 2)) * (bins / box_dim)), 0, bins - 1)
 
 
 def get_mesh_stats(obj_file: str):
@@ -133,34 +133,34 @@ def get_vertices(obj_file: str):
                 vertices.append(parts[1:])
     return np.array(vertices, dtype=float)
 
-def extract_faces_bot_top(mesh: trimesh.Trimesh):
-    "Returns list of faces arranged from bottom to top"
+# def extract_faces_bot_top(mesh: trimesh.Trimesh):
+#     "Returns list of faces arranged from bottom to top"
 
-    faces = mesh.faces
-    vertices = mesh.vertices
+#     faces = mesh.faces
+#     vertices = mesh.vertices
 
-    face_data = []
-    for face in faces:
-        centroid = np.mean([vertices[i][2] for i in face])
-        face_data.append((centroid, face))
+#     face_data = []
+#     for face in faces:
+#         centroid = np.mean([vertices[i][2] for i in face])
+#         face_data.append((centroid, face))
 
-    face_data.sort(key=lambda x : x[0])
-    faces = np.array([face for _, face in face_data])
-    faces = torch.from_numpy(faces)
-    return faces
+#     face_data.sort(key=lambda x : x[0])
+#     faces = np.array([face for _, face in face_data])
+#     faces = torch.from_numpy(faces)
+#     return faces
 
-def lex_sort_verts(face: torch.Tensor, all_vertices: torch.Tensor):
-    """lexicographically sorts vertices present in individual faces
-        Params:
-            Face (np.array): 1D list of vertices forming a single face
-            all_vertices (np.array): list of all vertices present in mesh rearranged as zyx
-    """
+# def lex_sort_verts(face: torch.Tensor, all_vertices: torch.Tensor):
+#     """lexicographically sorts vertices present in individual faces
+#         Params:
+#             Face (np.array): 1D list of vertices forming a single face
+#             all_vertices (np.array): list of all vertices present in mesh rearranged as zyx
+#     """
     
-    face_vertices = np.array([all_vertices[vert] for vert in face])
+#     face_vertices = np.array([all_vertices[vert] for vert in face])
     
-    sorted_idx = np.lexsort((face_vertices[:, 2], face_vertices[:,1], face_vertices[:, 0]))
+#     sorted_idx = np.lexsort((face_vertices[:, 2], face_vertices[:,1], face_vertices[:, 0]))
     
-    return face_vertices[sorted_idx]
+#     return face_vertices[sorted_idx]
 
 def get_max_seq_len(data_dir: str):
     "Returns the max seq len the model will recieve"
@@ -220,3 +220,25 @@ def write_obj(point_cloud, file_name):
 
         for face in face_list:
             f.write(f"f {' '.join(str(idx) for idx in face)}\n")       
+
+# def get_point_cloud_data(mesh_path: str):
+#     mesh = trimesh.load_mesh(mesh_path, file_type = 'obj')
+#     vertices = normalize_verts_to_box(mesh_path)
+
+#     mesh.vertices = vertices
+
+#     #sampling points on the surface of the bounded mesh (N, 3)
+#     point_cloud, face_indices = trimesh.sample.sample_surface(mesh, 8192//2)
+
+#     #point cloud & point normals
+#     point_cloud = torch.from_numpy(point_cloud).to(dtype=torch.float32)
+#     point_normals = torch.from_numpy(mesh.face_normals[face_indices]).to(dtype=torch.float32)
+
+#     # augmentation
+#     point_cloud = add_gaussian_noise(point_cloud, mean=0.0, std=0.01) #according to paper: mean = 0.0, std = 0.01
+#     point_normals = add_gaussian_noise(point_normals, mean=0.0, std=0.03)
+#     point_normals = set_zero_vector(points=point_normals, rate=0.3, size=point_normals.shape[1])
+
+#     points = torch.cat((point_cloud, point_normals), dim=1)
+
+#     return points, point_cloud

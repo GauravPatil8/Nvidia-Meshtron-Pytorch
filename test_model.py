@@ -1,6 +1,6 @@
 from meshtron.model import Meshtron
 from meshtron.encoder_conditioning import ConditioningEncoder
-from meshtron.VertexTokenizer import VertexTokenizer
+from meshtron.mesh_tokenizer import MeshTokenizer
 from torch.optim.lr_scheduler import LambdaLR, CosineAnnealingLR, SequentialLR
 from pipeline.stages.inference import Inference
 from pipeline.config import ConfigurationManager
@@ -26,7 +26,7 @@ torch.manual_seed(123)
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 LEARNING_RATE = 0.01
 print(DEVICE)
-tokenizer = VertexTokenizer(128)
+tokenizer = MeshTokenizer(128)
 
 
 NUM_EPOCHS = 5
@@ -78,7 +78,7 @@ def get_model():
                     encoder=encoder,
                     ).to(device=DEVICE)
 
-def train(model: Meshtron, tokenizer: VertexTokenizer):
+def train(model: Meshtron, tokenizer: MeshTokenizer):
     model.train()
     g_step = 0
     optimizer = torch.optim.Adam(model.parameters(), LEARNING_RATE, eps=1e-9, weight_decay=1e-2)
@@ -150,7 +150,7 @@ def get_point_cloud_data(mesh_path: str):
 
 def test_inference():
     # Configure the model parameters based on the training model parameters
-    generator = Inference(ConfigurationManager.model_params(), get_latest_weights_path(ConfigurationManager.training_config())).to(DEVICE)
+    generator = Inference(get_latest_weights_path(ConfigurationManager.training_config())).to(DEVICE)
     mesh_dir = ConfigurationManager.dataset_config().original_mesh_dir
     monkey_obj = os.path.join(mesh_dir, 'suzanne.obj')
     cube_obj = os.path.join(mesh_dir,'cube.obj')

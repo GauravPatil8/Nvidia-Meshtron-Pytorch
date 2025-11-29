@@ -7,7 +7,7 @@ import torch
 import trimesh
 from torch.utils.data import Dataset, DataLoader, random_split
 from pipeline.utils.common import get_path
-from meshtron.VertexTokenizer import VertexTokenizer
+from meshtron.mesh_tokenizer import MeshTokenizer
 from pipeline.utils.data import get_mesh_stats, get_max_seq_len, normalize_verts_to_box, add_gaussian_noise, set_zero_vector
 from pipeline.config_entities import DatasetConfig, DataLoaderConfig
 
@@ -16,7 +16,7 @@ class PrimitiveDataset(Dataset):
                  *,
                   dataset_dir: str, 
                   original_mesh_dir: str,
-                  tokenizer: VertexTokenizer, 
+                  tokenizer: MeshTokenizer, 
                   point_cloud_size: int = 2048, 
                   num_of_bins: int = 1024,
                   std_points:float,
@@ -79,7 +79,7 @@ class PrimitiveDataset(Dataset):
         points = torch.cat((point_cloud, point_normals), dim=1)
 
         #decoder input
-        dec_input = self.tokenizer.encode(mesh, vertices)
+        dec_input = self.tokenizer.encode(self.files[index])
 
         #add special tokens
         num_dec_tokens = 0
@@ -124,11 +124,11 @@ def causal_mask(size):
 
 def get_dataloaders(dataset_config: DatasetConfig, loader_config: DataLoaderConfig):
     """Returns Train and test split dataloaders and VertexTokenizer"""
-    vertex_tokenizer = VertexTokenizer(dataset_config.num_of_bins)
+    mesh_tokenizer = MeshTokenizer(dataset_config.num_of_bins)
     dataset = PrimitiveDataset(
         dataset_dir=dataset_config.dataset_dir,
         original_mesh_dir=dataset_config.original_mesh_dir,
-        tokenizer=vertex_tokenizer,
+        tokenizer=mesh_tokenizer,
         point_cloud_size=dataset_config.point_cloud_size,
         num_of_bins=dataset_config.num_of_bins,
         std_points = dataset_config.std_points,
@@ -160,4 +160,4 @@ def get_dataloaders(dataset_config: DatasetConfig, loader_config: DataLoaderConf
         persistent_workers=loader_config.persistent_workers
     )
 
-    return train_loader, test_loader, vertex_tokenizer
+    return train_loader, test_loader, mesh_tokenizer
