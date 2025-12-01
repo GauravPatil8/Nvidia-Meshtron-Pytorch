@@ -41,7 +41,7 @@ pip install -r requirements.txt
 import torch
 from meshtron.model import Meshtron
 from meshtron.encoder_conditioning import ConditioningEncoder
-from meshtron.mesh_tokenizer import VertexTokenizer
+from meshtron.mesh_tokenizer import MeshTokenizer
 ```
 ### Initialize tokenizer
 ```python
@@ -118,4 +118,5 @@ For questions and discussions, please open an issue on GitHub.
 
 
 **Note**: This is an unofficial implementation. For official code and models, please visit the [official project page](https://research.nvidia.com/labs/dir/meshtron).
+
 
