@@ -9,6 +9,10 @@ from pipeline.utils.model import get_model, get_latest_weights_path, get_weights
 from pipeline.primitive_dataset import get_dataloaders
 from pipeline.config_entities import TrainingConfig, ModelParams, DatasetConfig, DataLoaderConfig
 
+import torch.distributed as dist
+from torch.nn.parallel import DistributedDataParallel as ddp
+
+
 
 class Trainer(nn.Module):
     def __init__(self, 
@@ -19,18 +23,31 @@ class Trainer(nn.Module):
                  loader_config: DataLoaderConfig
                  ):
         super().__init__()
+        dist.init_process_group(backend="nccl")
+
+        self.rank = dist.get_rank()
+        world_size = dist.get_world_size()
+        local_rank = int(os.environ["LOCAL_RANK"])
+        torch.cuda.set_device(local_rank)
+        self.device = torch.device(f"cuda:{local_rank}")
+
+        if self.rank == 0:
+            print(f"Training with {world_size} GPUs")
+
         self.training_config = training_config
 
         self.model_params = model_params
 
-        self.train_dataloader, self.test_dataloader, self.tokenizer = get_dataloaders(dataset_config, loader_config)
+        self.train_dataloader, self.test_dataloader, self.tokenizer, self.sampler = get_dataloaders(dataset_config, loader_config, world_size, self.rank)
 
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+        dist.barrier()
 
         model_params.pad_token = self.tokenizer.PAD.item()
 
         self.model = get_model(model_params).to(device=self.device)
 
+        self.model = ddp(self.model, device_ids=[local_rank])
         self.optimizer = torch.optim.Adam(self.model.parameters(), training_config.learning_rate, eps=1e-9, weight_decay=1e-2)
 
         self.total_steps = self.training_config.num_epochs * len(self.train_dataloader)
@@ -98,7 +115,9 @@ class Trainer(nn.Module):
             logger.warning("No model to load, starting from sratch")
 
         for epoch in range(initial_epoch, self.training_config.num_epochs):
+
             self.model.train()
+            self.sampler.set_epoch(epoch)
             batch_iter = tqdm(self.train_dataloader, desc=f"Processing epoch: {epoch:02d}")
 
             for batch in batch_iter:
@@ -113,7 +132,6 @@ class Trainer(nn.Module):
                 with torch.amp.autocast('cuda'):
                     output = self.model(decoder_input, point_cloud, face_count, quad_ratio, decoder_mask)
                     proj_out = self.model.project(output)
-                
 
                     loss = self.loss_func(proj_out.view(-1, self.tokenizer.vocab_size), target.view(-1))
                     
@@ -144,18 +162,20 @@ class Trainer(nn.Module):
             model_file_path = get_weights_path(self.training_config, f"{epoch:02d}")
             old_model_file_path = get_weights_path(self.training_config, f"{epoch - 1:02d}")
 
-            torch.save(
-                {
-                    'epoch': epoch,
-                    'model_state_dict': self.model.state_dict(),
-                    'optimizer_state_dict': self.optimizer.state_dict(),
-                    'scheduler_state_dict': self.scheduler.state_dict(),
-                    'scaler_state_dict': self.scaler.state_dict(),
-                    'global_step': global_step
-                },
-                model_file_path
-            )
+            if self.rank == 0:
+                torch.save(
+                    {
+                        'epoch': epoch,
+                        'model_state_dict': self.model.state_dict(),
+                        'optimizer_state_dict': self.optimizer.state_dict(),
+                        'scheduler_state_dict': self.scheduler.state_dict(),
+                        'scaler_state_dict': self.scaler.state_dict(),
+                        'global_step': global_step
+                    },
+                    model_file_path
+                )
 
             #saving some memory
             if os.path.exists(old_model_file_path):
                 os.remove(old_model_file_path)
+        dist.destroy_process_group()

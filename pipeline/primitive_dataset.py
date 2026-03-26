@@ -5,7 +5,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 import torch
 import trimesh
-from torch.utils.data import Dataset, DataLoader, random_split
+from torch.utils.data import Dataset, DataLoader, random_split, DistributedSampler
 from pipeline.utils.common import get_path
 from meshtron.mesh_tokenizer import MeshTokenizer
 from pipeline.utils.data import get_mesh_stats, get_max_seq_len, normalize_verts_to_box, add_gaussian_noise, set_zero_vector
@@ -122,7 +122,7 @@ def causal_mask(size):
     return torch.tril(torch.ones(size, size)).unsqueeze_(0)
 
 
-def get_dataloaders(dataset_config: DatasetConfig, loader_config: DataLoaderConfig):
+def get_dataloaders(dataset_config: DatasetConfig, loader_config: DataLoaderConfig, world_size: int, rank: int):
     """Returns Train and test split dataloaders and VertexTokenizer"""
     mesh_tokenizer = MeshTokenizer(dataset_config.num_of_bins)
     dataset = PrimitiveDataset(
@@ -142,10 +142,17 @@ def get_dataloaders(dataset_config: DatasetConfig, loader_config: DataLoaderConf
     test_size = dataset_size - train_size
     train_dataset, test_dataset = random_split(dataset, [train_size, test_size])
 
+    sampler = DistributedSampler(
+        dataset=train_dataset,
+        num_replicas=world_size,
+        rank=rank,
+        shuffle=True
+    )
     train_loader = DataLoader(
         dataset=train_dataset,
         batch_size=loader_config.batch_size,
-        shuffle=loader_config.shuffle,
+        shuffle=False,
+        sampler=sampler,
         num_workers=loader_config.num_workers,
         pin_memory=loader_config.pin_memory,
         persistent_workers=loader_config.persistent_workers
@@ -160,4 +167,4 @@ def get_dataloaders(dataset_config: DatasetConfig, loader_config: DataLoaderConf
         persistent_workers=loader_config.persistent_workers
     )
 
-    return train_loader, test_loader, mesh_tokenizer
+    return train_loader, test_loader, mesh_tokenizer, sampler
