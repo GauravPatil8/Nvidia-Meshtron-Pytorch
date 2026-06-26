@@ -6,4 +6,4 @@ fastapi==0.122.0
 scipy==1.16.3
 rotary-embedding-torch==0.8.9
 uvicorn==0.38.0
-https://github.com/Dao-AILab/flash-attention/releases/download/v2.8.3/flash_attn-2.8.3+cu13torch2.10cxx11abiTRUE-cp312-cp312-linux_x86_64.whl
+https://github.com/Dao-AILab/flash-attention/releases/download/v2.8.1/flash_attn-2.8.1+cu12torch2.10cxx11abiTRUE-cp312-cp312-linux_x86_64.whl
