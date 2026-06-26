@@ -131,9 +131,7 @@ class Trainer(nn.Module):
                 #forward
                 with torch.amp.autocast('cuda'):
                     output = self.model(decoder_input, point_cloud, face_count, quad_ratio, decoder_mask)
-                    proj_out = self.model.project(output)
-
-                    loss = self.loss_func(proj_out.view(-1, self.tokenizer.vocab_size), target.view(-1))
+                    loss = self.loss_func(output.view(-1, self.tokenizer.vocab_size), target.view(-1))
                     
                     with open(os.path.join(get_root_folder(),'pipeline','logs','loss.txt'), 'a') as f:
                         f.write(f"{loss.item():0.6f}\n")
