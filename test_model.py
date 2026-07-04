@@ -106,9 +106,8 @@ def train(model: Meshtron, tokenizer: MeshTokenizer):
             #forward
             with torch.amp.autocast(device_type='cuda'):
                 output = model(INPUT_DATA[i].unsqueeze(0), POINT_CLOUD[i].unsqueeze(-3), FACE_COUNT[i], QUAD_RATIO[i], MASK)
-                out_prob = model.project(output)
-                # print(out_prob)
-                loss = loss_func(out_prob.view(-1, tokenizer.vocab_size), TARGET[i].view(-1))
+
+                loss = loss_func(output.view(-1, tokenizer.vocab_size), TARGET[i].view(-1))
             iter.set_postfix({"loss": f"{loss.item():6.3f}"})
 
             loss.backward()
@@ -172,5 +171,5 @@ def test_inference():
 
 
 if __name__ == '__main__':
-    # main()
-    test_inference()
+    main()
+    # test_inference()

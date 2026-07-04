@@ -93,7 +93,4 @@ class Meshtron(nn.Module):
         data = self.__causal_upsample(data) + skips[0]
         data = self.post_layer(x=data, conditions = cond, mask = mask)
         
-        return data
-        
-    def project(self, x: torch.Tensor):
-        return self.out_proj(x)
+        return self.out_proj(data)
