@@ -35,7 +35,6 @@ class Meshtron(nn.Module):
         self.embedding = InputEmbedding(embedding_size, dim)
         self.up_sample = LinearUpSample(shortening_factor, dim)
         self.down_sample = LinearDownSample(shortening_factor, dim)
-        self.total_reduction = len(num_blocks_per_layers) - 1
         self.pad_token = pad_token
         self.conditioning_encoder = encoder
         self.out_proj = ProjectionLayer(dim, embedding_size)
@@ -54,7 +53,7 @@ class Meshtron(nn.Module):
             condition_every_n_layers=condition_every_n_layers,
         )
 
-    def __causal_upsample(self, x):
+    def _causal_upsample(self, x):
         x = self.up_sample(x)
         shift = self.sf - 1
         x = F.pad(x, (0, 0, shift, -shift), value=0.) #padding for preventing leak
@@ -67,7 +66,7 @@ class Meshtron(nn.Module):
         #conditioning tensor
         cond = self.conditioning_encoder(conditioning_data, face_count, quad_ratio)
 
-        data = pad_to_multiple(data, self.sf ** self.total_reduction, dim=-1, value=self.pad_token)
+        data = pad_to_multiple(data, self.sf, dim=-1, value=self.pad_token)
         pad_mask = (data == self.pad_token)
         data = self.embedding(data)
         data = data.masked_fill(pad_mask.unsqueeze(-1), 0.0)#zeroing pad tokens
@@ -86,11 +85,11 @@ class Meshtron(nn.Module):
         data = self.center_layer(x = data, conditions = cond, mask = mask)
 
         #upsampling valley
-        data = self.__causal_upsample(data) + skips[-1]
+        data = self._causal_upsample(data) + skips[-1]
         data = self.up_valley(x=data, conditions=cond, mask=mask)
 
         #upsampling for the last vanilla block(post layer)
-        data = self.__causal_upsample(data) + skips[0]
+        data = self._causal_upsample(data) + skips[0]
         data = self.post_layer(x=data, conditions = cond, mask = mask)
         
         return self.out_proj(data)
