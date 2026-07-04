@@ -18,7 +18,7 @@ class MeshTokenizer:
         self.vocab_size = bins + 3 # add 3 for special tokens
 
     
-    def __extract_faces_bot_top(self, mesh: trimesh.Trimesh):
+    def _extract_faces_bot_top(self, mesh: trimesh.Trimesh):
         "Returns list of faces arranged from bottom to top"
 
         faces = mesh.faces
@@ -34,7 +34,7 @@ class MeshTokenizer:
         faces = torch.from_numpy(faces)
         return faces
     
-    def __normalize_verts_to_box(self, file_path: str):
+    def _normalize_mesh(self, mesh):
         """
         Normalize vertices of mesh so that it fits inside a cube bounding box of size 1.0 and zero centers it.
 
@@ -42,23 +42,17 @@ class MeshTokenizer:
             mesh (trimesh.Trimesh): Input mesh
         """
 
-        vertices = self.__get_vertices(file_path)
-        min_coord = np.min(vertices, axis=0)
-        max_coord = np.max(vertices, axis=0)
+        # Center the mesh at the origin
+        center = mesh.bounds.mean(axis=0)
+        mesh.apply_translation(-center)
 
-        # Center of bounding box
-        center = (max_coord + min_coord) / 2.0
-        vertices -= center  # shift to zero-center
+        # Scale so the largest dimension becomes 1
+        scale = mesh.extents.max()
+        mesh.apply_scale(1.0 / scale)
+
+        return mesh
     
-        dimension = max_coord - min_coord
-        
-        scale = 1.0 / np.max(dimension)
-
-        vertices *= scale
-
-        return torch.from_numpy(vertices)
-    
-    def __lex_sort_verts(self, face: torch.Tensor, all_vertices: torch.Tensor):
+    def _lex_sort_verts(self, face: torch.Tensor, all_vertices: torch.Tensor):
         """lexicographically sorts vertices present in individual faces
             Params:
                 Face (np.array): 1D list of vertices forming a single face
@@ -70,23 +64,6 @@ class MeshTokenizer:
         sorted_idx = np.lexsort((face_vertices[:, 2], face_vertices[:,1], face_vertices[:, 0]))
         
         return face_vertices[sorted_idx]
-    
-    def __get_vertices(self, obj_file: str):
-        if not os.path.exists(obj_file):
-            raise FileNotFoundError(f"File not found {obj_file}")
-        vertices = []
-        with open(obj_file, 'r') as obj:
-            for line in obj:
-                line = line.strip()
-
-                if not line or line.startswith('#'):
-                    continue
-
-                parts  = line.split()
-
-                if parts[0] == 'v':
-                    vertices.append(parts[1:])
-        return np.array(vertices, dtype=float)
 
     def quantize(self, sequence: torch.Tensor):
         "converts float values to discrete int bins"
@@ -100,16 +77,14 @@ class MeshTokenizer:
 
         mesh = trimesh.load(mesh_path)
 
-        vertices = self.__normalize_verts_to_box(mesh_path)
-       
-        mesh.vertices = vertices
+        mesh = self._normalize_mesh(mesh)
 
-        face_list = self.__extract_faces_bot_top(mesh)
+        face_list = self._extract_faces_bot_top(mesh)
 
+        sorted_faces_verts = torch.from_numpy(np.array([self._lex_sort_verts(face, mesh.vertices) for face in face_list]))
+        
         #arrange vertices as x,y,z -> z,y,x. z represents vertical axis.
-        vertices = vertices[:, [2,1,0]]
-
-        sorted_faces_verts = torch.from_numpy(np.array([self.__lex_sort_verts(face, vertices) for face in face_list]))
+        sorted_faces_verts = sorted_faces_verts[:, :, [2,1,0]]
 
         # Flatten the (N, 3, 3) list to (N*9)
         sequence = torch.flatten(sorted_faces_verts)
@@ -130,3 +105,16 @@ class MeshTokenizer:
         points = points[:, [2,1,0]]
 
         return points
+    
+def _test_mesh_tokenizer():
+    mesh_path = R"/root/Nvidia-Meshtron-Pytorch/mesh/suzanne.obj"
+    tokenizer = MeshTokenizer(bins=128)
+    tokens = tokenizer.encode(mesh_path)
+    print(tokens.size())
+    coord = tokenizer.decode(tokens)
+    print(coord.size())
+    print(tokens)
+    print(coord)
+
+if __name__ == "__main__":
+    _test_mesh_tokenizer()
