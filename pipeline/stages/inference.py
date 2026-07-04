@@ -29,7 +29,7 @@ class Inference(nn.Module):
             raise RuntimeError(f"Failed to load model weights: {e}")
         
         self.model.load_state_dict(state["model_state_dict"])
-
+        self.sf = self.model.sf
 
     def run(self, point_cloud: torch.Tensor, face_count: torch.Tensor, quad_ratio: torch.Tensor):
         """ Follows greedy decode approach
@@ -46,12 +46,15 @@ class Inference(nn.Module):
         while True:
             if decoder_input.size(1) == 10377:
                 break
-
+            
             with torch.no_grad():
                 with torch.amp.autocast('cuda', dtype=torch.float16):
                     out = self.model(decoder_input, point_cloud, face_count, quad_ratio, None)
+                    
+            rem = decoder_input.size(1) % self.sf
+            tok_loc = -(self.sf - rem + 1)  if rem !=0 else -1 # picks actual token instead of [PAD] to predict next token
 
-            logits = self.model.project(out[:, decoder_input.shape[-1] - 9])
+            logits = out[tok_loc]
 
             filtered_logits = top_k(logits, thres=0.9)
             probs = F.softmax(filtered_logits, dim=-1)
