@@ -104,7 +104,7 @@ class PrimitiveDataset(Dataset):
         target = torch.cat(
             [
                 decoder_input[1:],
-                torch.full((1,), self.PAD, dtype=torch.int64)
+                torch.full((1,), self.PAD.item(), dtype=torch.int64)
             ],
             dim=0
         )
@@ -122,7 +122,13 @@ def causal_mask(size):
     return torch.tril(torch.ones(size, size)).unsqueeze_(0)
 
 
-def get_dataloaders(dataset_config: DatasetConfig, loader_config: DataLoaderConfig, world_size: int, rank: int):
+def get_dataloaders(
+        dataset_config: DatasetConfig,
+        loader_config: DataLoaderConfig,
+        world_size: int = 1,
+        rank: int = 0,
+        distributed: bool = False
+):
     """Returns Train and test split dataloaders and VertexTokenizer"""
     mesh_tokenizer = MeshTokenizer(dataset_config.num_of_bins)
     dataset = PrimitiveDataset(
@@ -142,16 +148,19 @@ def get_dataloaders(dataset_config: DatasetConfig, loader_config: DataLoaderConf
     test_size = dataset_size - train_size
     train_dataset, test_dataset = random_split(dataset, [train_size, test_size])
 
-    sampler = DistributedSampler(
-        dataset=train_dataset,
-        num_replicas=world_size,
-        rank=rank,
-        shuffle=True
-    )
+    sampler = None
+    if distributed:
+        sampler = DistributedSampler(
+            dataset=train_dataset,
+            num_replicas=world_size,
+            rank=rank,
+            shuffle=True
+        )
+
     train_loader = DataLoader(
         dataset=train_dataset,
         batch_size=loader_config.batch_size,
-        shuffle=False,
+        shuffle=False if sampler else loader_config.shuffle,
         sampler=sampler,
         num_workers=loader_config.num_workers,
         pin_memory=loader_config.pin_memory,

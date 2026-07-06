@@ -13,6 +13,18 @@ import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as ddp
 
 
+def _is_distributed_launch():
+    return int(os.environ.get("WORLD_SIZE", "1")) > 1
+
+
+def _strip_module_prefix(state_dict):
+    if not any(key.startswith("module.") for key in state_dict):
+        return state_dict
+    return {
+        key.removeprefix("module."): value
+        for key, value in state_dict.items()
+    }
+
 
 class Trainer(nn.Module):
     def __init__(self, 
@@ -23,31 +35,52 @@ class Trainer(nn.Module):
                  loader_config: DataLoaderConfig
                  ):
         super().__init__()
-        dist.init_process_group(backend="nccl")
+        self.distributed = _is_distributed_launch()
+        self.rank = 0
+        self.world_size = 1
+        self.local_rank = None
 
-        self.rank = dist.get_rank()
-        world_size = dist.get_world_size()
-        local_rank = int(os.environ["LOCAL_RANK"])
-        torch.cuda.set_device(local_rank)
-        self.device = torch.device(f"cuda:{local_rank}")
+        if self.distributed:
+            if not torch.cuda.is_available():
+                raise RuntimeError("Distributed training requires CUDA/NCCL, but CUDA is not available")
+            dist.init_process_group(backend="nccl")
+            self.rank = dist.get_rank()
+            self.world_size = dist.get_world_size()
+            self.local_rank = int(os.environ["LOCAL_RANK"])
+            torch.cuda.set_device(self.local_rank)
+            self.device = torch.device(f"cuda:{self.local_rank}")
+        else:
+            self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+        self.use_amp = self.device.type == "cuda"
 
         if self.rank == 0:
-            print(f"Training with {world_size} GPUs")
+            if self.distributed:
+                print(f"Training with {self.world_size} GPUs")
+            else:
+                print(f"Training with single process on {self.device}")
 
         self.training_config = training_config
 
         self.model_params = model_params
 
-        self.train_dataloader, self.test_dataloader, self.tokenizer, self.sampler = get_dataloaders(dataset_config, loader_config, world_size, self.rank)
+        self.train_dataloader, self.test_dataloader, self.tokenizer, self.sampler = get_dataloaders(
+            dataset_config,
+            loader_config,
+            self.world_size,
+            self.rank,
+            distributed=self.distributed
+        )
 
-
-        dist.barrier()
+        if self.distributed:
+            dist.barrier()
 
         model_params.pad_token = self.tokenizer.PAD.item()
 
         self.model = get_model(model_params).to(device=self.device)
 
-        self.model = ddp(self.model, device_ids=[local_rank])
+        if self.distributed:
+            self.model = ddp(self.model, device_ids=[self.local_rank])
         self.optimizer = torch.optim.Adam(self.model.parameters(), training_config.learning_rate, eps=1e-9, weight_decay=1e-2)
 
         self.total_steps = self.training_config.num_epochs * len(self.train_dataloader)
@@ -61,10 +94,19 @@ class Trainer(nn.Module):
 
         self.loss_func = nn.CrossEntropyLoss(ignore_index=self.tokenizer.PAD.item(), label_smoothing=training_config.label_smoothing).to(self.device)
 
-        self.scaler = torch.amp.GradScaler()
+        self.scaler = torch.amp.GradScaler(enabled=self.use_amp)
 
     def __str__(self):
         return f"Training Stage f{Trainer}"
+
+    def _base_model(self):
+        return self.model.module if self.distributed else self.model
+
+    def _load_model_state(self, state_dict):
+        self._base_model().load_state_dict(_strip_module_prefix(state_dict))
+
+    def _model_state_dict(self):
+        return self._base_model().state_dict()
 
     def validate(self):
 
@@ -81,9 +123,9 @@ class Trainer(nn.Module):
                 face_count = batch["face_count"].to(self.device)
                 target = batch["target"].to(self.device)
 
-                with torch.amp.autocast('cuda', dtype=torch.bfloat16):
+                with torch.amp.autocast(self.device.type, dtype=torch.bfloat16, enabled=self.use_amp):
                     out = self.model(decoder_input, point_cloud, face_count, quad_ratio, decoder_mask)
-                    probs = self.model.project(out)
+                    probs = self._base_model().project(out)
 
                     loss = self.loss_func(probs.view(-1, self.tokenizer.vocab_size), target.view(-1))
 
@@ -103,8 +145,8 @@ class Trainer(nn.Module):
 
         if model_filename:
             logger.info(f"Preloading model: {model_filename}")
-            state = torch.load(model_filename)
-            self.model.load_state_dict(state["model_state_dict"])
+            state = torch.load(model_filename, map_location=self.device)
+            self._load_model_state(state["model_state_dict"])
             initial_epoch  = state["epoch"] + 1
             self.optimizer.load_state_dict(state['optimizer_state_dict'])
             self.scheduler.load_state_dict(state['scheduler_state_dict'])
@@ -117,10 +159,11 @@ class Trainer(nn.Module):
         for epoch in range(initial_epoch, self.training_config.num_epochs):
 
             self.model.train()
-            self.sampler.set_epoch(epoch)
+            if self.sampler is not None:
+                self.sampler.set_epoch(epoch)
             batch_iter = tqdm(self.train_dataloader, desc=f"Processing epoch: {epoch:02d}")
 
-            for batch in batch_iter:
+            for i, batch in enumerate(batch_iter):
                 decoder_input = batch["decoder_input"].to(self.device, non_blocking = True)
                 decoder_mask = None
                 point_cloud = batch["point_cloud"].to(self.device, non_blocking = True)
@@ -129,14 +172,14 @@ class Trainer(nn.Module):
                 target = batch["target"].to(self.device, non_blocking = True)
 
                 #forward
-                with torch.amp.autocast('cuda'):
+                with torch.amp.autocast(self.device.type, enabled=self.use_amp):
                     output = self.model(decoder_input, point_cloud, face_count, quad_ratio, decoder_mask)
                     loss = self.loss_func(output.view(-1, self.tokenizer.vocab_size), target.view(-1))
                     
                     with open(os.path.join(get_root_folder(),'pipeline','logs','loss.txt'), 'a') as f:
                         f.write(f"{loss.item():0.6f}\n")
-
-                batch_iter.set_postfix({"loss": f"{loss.item():6.3f}"})
+                avg_loss = loss.item() / (i+1)
+                batch_iter.set_postfix({"loss": f"{avg_loss:6.3f}"})
                 logger.info(f"Epoch: {epoch}, Iteration: {global_step:02d}, loss: {loss}")
 
                 #backward
@@ -164,7 +207,7 @@ class Trainer(nn.Module):
                 torch.save(
                     {
                         'epoch': epoch,
-                        'model_state_dict': self.model.state_dict(),
+                        'model_state_dict': self._model_state_dict(),
                         'optimizer_state_dict': self.optimizer.state_dict(),
                         'scheduler_state_dict': self.scheduler.state_dict(),
                         'scaler_state_dict': self.scaler.state_dict(),
@@ -176,4 +219,5 @@ class Trainer(nn.Module):
             #saving some memory
             if os.path.exists(old_model_file_path):
                 os.remove(old_model_file_path)
-        dist.destroy_process_group()
+        if self.distributed:
+            dist.destroy_process_group()
