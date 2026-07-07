@@ -9,7 +9,7 @@ def top_k(logits, thres = 0.9):
     k = int((1 - thres) * logits.shape[-1])
     val, ind = torch.topk(logits, k)
     probs = torch.full_like(logits, float('-inf'))
-    probs.scatter_(1, ind, val)
+    probs.scatter_(-1, ind, val)
     return probs
     
 class Inference(nn.Module):
@@ -30,7 +30,7 @@ class Inference(nn.Module):
         
         self.model.load_state_dict(state["model_state_dict"])
         self.sf = self.model.sf
-
+        print(self.sf)
     def run(self, point_cloud: torch.Tensor, face_count: torch.Tensor, quad_ratio: torch.Tensor):
         """ Follows greedy decode approach
             point_cloud shape : [1, N, 6]
@@ -49,17 +49,17 @@ class Inference(nn.Module):
             
             with torch.no_grad():
                 with torch.amp.autocast('cuda', dtype=torch.float16):
-                    out = self.model(decoder_input, point_cloud, face_count, quad_ratio, None)
+                    out = self.model(decoder_input, point_cloud, face_count, quad_ratio, None).squeeze()
                     
-            rem = decoder_input.size(1) % self.sf
-            tok_loc = -(self.sf - rem + 1)  if rem !=0 else -1 # picks actual token instead of [PAD] to predict next token
-
+            # picks actual token instead of [PAD] to predict next token
+            tok_loc = decoder_input.size(1) - 1
             logits = out[tok_loc]
 
             filtered_logits = top_k(logits, thres=0.9)
             probs = F.softmax(filtered_logits, dim=-1)
             next_token = torch.multinomial(probs, num_samples=1)
-
+            
+            print(next_token)
             #return coord to stream api
             coord = self.tokenizer.dequantize(next_token).item()
             yield coord

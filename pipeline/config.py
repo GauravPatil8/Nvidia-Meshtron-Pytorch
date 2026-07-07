@@ -60,7 +60,7 @@ class ConfigurationManager:
         return DatasetConfig(
             dataset_dir=get_path(PROJECT_ROOT, 'artifacts', 'dataset'),
             original_mesh_dir=get_path(PROJECT_ROOT, 'mesh'),
-            point_cloud_size=8192//2,
+            point_cloud_size=8192,
             num_of_bins=128,
             std_points=0.01,
             mean_points=0.0,
@@ -72,8 +72,8 @@ class ConfigurationManager:
     def dataloader_config():
         return DataLoaderConfig(
             train_ratio=0.9,
-            batch_size=9,
-            num_workers=2,
+            batch_size=1,
+            num_workers=1,
             shuffle=True,
             pin_memory=True,
             persistent_workers=True

@@ -8,7 +8,7 @@ import trimesh
 from torch.utils.data import Dataset, DataLoader, random_split, DistributedSampler
 from pipeline.utils.common import get_path
 from meshtron.mesh_tokenizer import MeshTokenizer
-from pipeline.utils.data import get_mesh_stats, get_max_seq_len, normalize_verts_to_box, add_gaussian_noise, set_zero_vector
+from pipeline.utils.data import get_mesh_stats, get_max_seq_len, get_point_cloud_data, get_max_face_count
 from pipeline.config_entities import DatasetConfig, DataLoaderConfig
 
 class PrimitiveDataset(Dataset):
@@ -41,6 +41,7 @@ class PrimitiveDataset(Dataset):
         self.mean_normals = mean_normals
         self.std_normals = std_normals
         self.max_seq_len = get_max_seq_len(original_mesh_dir)
+        self.max_face_count = get_max_face_count(original_mesh_dir)
         self.num_points = point_cloud_size
         self.num_of_bins = num_of_bins
         self.bounding_box_dim = 1.0
@@ -58,25 +59,9 @@ class PrimitiveDataset(Dataset):
         #get the stats before triangulation and normalization
         face_count, quad_ratio = get_mesh_stats(self.files[index])
 
-        mesh = trimesh.load_mesh(self.files[index])# returns triangulated mesh by default
-        
-        vertices = normalize_verts_to_box(self.files[index])
+        face_count /= self.max_face_count
 
-        mesh.vertices = vertices
-
-        #sampling points on the surface of the bounded mesh (N, 3)
-        point_cloud, face_indices = trimesh.sample.sample_surface(mesh, self.num_points)
-
-        #point cloud & point normals
-        point_cloud = torch.from_numpy(point_cloud).to(dtype=torch.float32)
-        point_normals = torch.from_numpy(mesh.face_normals[face_indices]).to(dtype=torch.float32)
-
-        # augmentation
-        point_cloud = add_gaussian_noise(point_cloud, mean=self.mean_points, std=self.std_points) #according to paper: mean = 0.0, std = 0.01
-        point_normals = add_gaussian_noise(point_normals, mean=self.mean_normals, std=self.std_normals)
-        point_normals = set_zero_vector(points=point_normals, rate=0.3, size=point_normals.shape[1])
-
-        points = torch.cat((point_cloud, point_normals), dim=1)
+        points, _ = get_point_cloud_data(self.files[index])
 
         #decoder input
         dec_input = self.tokenizer.encode(self.files[index])
@@ -104,7 +89,7 @@ class PrimitiveDataset(Dataset):
         target = torch.cat(
             [
                 decoder_input[1:],
-                torch.full((1,), self.PAD.item(), dtype=torch.int64)
+                torch.full((1,), self.EOS.item(), dtype=torch.int64)
             ],
             dim=0
         )

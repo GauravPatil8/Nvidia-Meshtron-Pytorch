@@ -66,7 +66,7 @@ class Meshtron(nn.Module):
         #conditioning tensor
         cond = self.conditioning_encoder(conditioning_data, face_count, quad_ratio)
 
-        data = pad_to_multiple(data, self.sf, dim=-1, value=self.pad_token)
+        data = pad_to_multiple(data, self.sf**2, dim=-1, value=self.pad_token)
         pad_mask = (data == self.pad_token)
         data = self.embedding(data)
         data = data.masked_fill(pad_mask.unsqueeze(-1), 0.0)#zeroing pad tokens

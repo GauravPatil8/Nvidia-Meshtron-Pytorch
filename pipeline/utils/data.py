@@ -162,6 +162,13 @@ def get_vertices(obj_file: str):
     
 #     return face_vertices[sorted_idx]
 
+def get_max_face_count(data_dir: str):
+    max_face_count = float('-inf')
+    for file in os.listdir(data_dir):
+        mesh = trimesh.load(os.path.join(data_dir, file))
+        max_face_count = max(max_face_count, len(mesh.faces))
+    return int(max_face_count)
+
 def get_max_seq_len(data_dir: str):
     "Returns the max seq len the model will recieve"
     max_seq_len = float('-inf')
@@ -220,12 +227,31 @@ def write_obj(point_cloud, file_name):
 
         for face in face_list:
             f.write(f"f {' '.join(str(idx) for idx in face)}\n")       
+            
+def normalize_mesh(mesh):
+        """
+        Normalize vertices of mesh so that it fits inside a cube bounding box of size 1.0 and zero centers it.
+
+        Parameters:
+            mesh (trimesh.Trimesh): Input mesh
+        """
+
+        # Center the mesh at the origin
+        center = mesh.bounds.mean(axis=0)
+        mesh.apply_translation(-center)
+
+        # Scale so the largest dimension becomes 1
+        scale = mesh.extents.max()
+        mesh.apply_scale(1.0 / scale)
+
+        return mesh
 
 def get_point_cloud_data(mesh_path: str):
     mesh = trimesh.load_mesh(mesh_path, file_type = 'obj')
-    vertices = normalize_verts_to_box(mesh_path)
+    # vertices = normalize_verts_to_box(mesh_path)
 
-    mesh.vertices = vertices
+    # mesh.vertices = vertices
+    mesh = normalize_mesh(mesh)
 
     #sampling points on the surface of the bounded mesh (N, 3)
     point_cloud, face_indices = trimesh.sample.sample_surface(mesh, 8192//2)

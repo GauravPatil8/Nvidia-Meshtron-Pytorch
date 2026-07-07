@@ -163,7 +163,7 @@ class Trainer(nn.Module):
                 self.sampler.set_epoch(epoch)
             batch_iter = tqdm(self.train_dataloader, desc=f"Processing epoch: {epoch:02d}")
 
-            for i, batch in enumerate(batch_iter):
+            for batch in batch_iter:
                 decoder_input = batch["decoder_input"].to(self.device, non_blocking = True)
                 decoder_mask = None
                 point_cloud = batch["point_cloud"].to(self.device, non_blocking = True)
@@ -178,8 +178,7 @@ class Trainer(nn.Module):
                     
                     with open(os.path.join(get_root_folder(),'pipeline','logs','loss.txt'), 'a') as f:
                         f.write(f"{loss.item():0.6f}\n")
-                avg_loss = loss.item() / (i+1)
-                batch_iter.set_postfix({"loss": f"{avg_loss:6.3f}"})
+                batch_iter.set_postfix({"loss": f"{loss.item():6.3f}"})
                 logger.info(f"Epoch: {epoch}, Iteration: {global_step:02d}, loss: {loss}")
 
                 #backward
