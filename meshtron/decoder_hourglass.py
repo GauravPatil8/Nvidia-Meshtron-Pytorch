@@ -168,7 +168,6 @@ def build_hourglass_valley(
         window_size:int,
         ff_dropout:float,
         attn_dropout:float,
-        rope: RotaryEmbedding,
         condition_every_n_layers: bool
     ) -> nn.ModuleList:
     
@@ -182,7 +181,6 @@ def build_hourglass_valley(
         head_dim=head_dim,
         d_ff=d_ff,
         window_size=window_size,
-        rope = rope,
         condition_every_n_layers=condition_every_n_layers,
     )
 
@@ -190,11 +188,12 @@ def build_hourglass_valley(
     down_blocks_num = num_blocks[1]
     centre_blocks_num = num_blocks[2]
 
-
-    pre_layer = Layer(num_blocks=pre_post_blocks_num, **layer_config)
-    down_valley = Layer(num_blocks=down_blocks_num, **layer_config)
-    center_layer = Layer(num_blocks=centre_blocks_num, **layer_config)
-    up_valley = Layer(num_blocks=down_blocks_num, **layer_config)
-    post_layer = Layer(num_blocks=pre_post_blocks_num, **layer_config)
+    # Each level gets its own RoPE — after downsampling, position semantics change
+    pre_layer = Layer(num_blocks=pre_post_blocks_num, rope=RotaryEmbedding(dim=head_dim), **layer_config)
+    down_valley = Layer(num_blocks=down_blocks_num, rope=RotaryEmbedding(dim=head_dim), **layer_config)
+    center_layer = Layer(num_blocks=centre_blocks_num, rope=RotaryEmbedding(dim=head_dim), **layer_config)
+    up_valley = Layer(num_blocks=down_blocks_num, rope=RotaryEmbedding(dim=head_dim), **layer_config)
+    post_layer = Layer(num_blocks=pre_post_blocks_num, rope=RotaryEmbedding(dim=head_dim), **layer_config)
 
     return pre_layer, down_valley, center_layer, up_valley, post_layer
+
