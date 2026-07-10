@@ -19,7 +19,7 @@ def pad_to_multiple(tensor, multiple, dim = -1, value = 0):
 def SwiGLU(x: torch.Tensor):
     "SwiGLU activation function"
     x1, x2 = x.chunk(2, dim=-1)
-    return F.silu(x2) * x1
+    return F.silu(x1) * x2
         
 class LinearUpSample(nn.Module):
     def __init__(self, shorten_factor: int, dim: int):
@@ -107,12 +107,14 @@ class Transformer(nn.Module):
 
         self.dropout = ff_dropout
         self.attention = Attention(dim, num_heads, head_dim, window_size, rope, attn_dropout)
+        if conditioning_flag:
+            self.cross_attention = Attention(dim, num_heads, head_dim, window_size, rope, attn_dropout)
         self.FFN = FeedForwardNetwork(dim, dim_ff, ff_dropout, SwiGLU)
 
     def forward(self,*, x: torch.Tensor, conditions: Optional[torch.Tensor], mask: Optional[torch.Tensor] = None):
         x = self.residuals[0](x, lambda x: self.attention(q=x,k=x, v=x, mask=mask))
         if self.conditioning_flag:
-            x = self.residuals[1](x, lambda x: self.attention(q=x,k= conditions, v=conditions, mask=mask))
+            x = self.residuals[1](x, lambda x: self.cross_attention(q=x,k= conditions, v=conditions, mask=mask))
             x = self.residuals[2](x, self.FFN)
         else:
             x = self.residuals[1](x, self.FFN)
@@ -166,7 +168,6 @@ def build_hourglass_valley(
         window_size:int,
         ff_dropout:float,
         attn_dropout:float,
-        rope: RotaryEmbedding,
         condition_every_n_layers: bool
     ) -> nn.ModuleList:
     
@@ -180,7 +181,6 @@ def build_hourglass_valley(
         head_dim=head_dim,
         d_ff=d_ff,
         window_size=window_size,
-        rope = rope,
         condition_every_n_layers=condition_every_n_layers,
     )
 
@@ -188,11 +188,12 @@ def build_hourglass_valley(
     down_blocks_num = num_blocks[1]
     centre_blocks_num = num_blocks[2]
 
-
-    pre_layer = Layer(num_blocks=pre_post_blocks_num, **layer_config)
-    down_valley = Layer(num_blocks=down_blocks_num, **layer_config)
-    center_layer = Layer(num_blocks=centre_blocks_num, **layer_config)
-    up_valley = Layer(num_blocks=down_blocks_num, **layer_config)
-    post_layer = Layer(num_blocks=pre_post_blocks_num, **layer_config)
+    # Each level gets its own RoPE — after downsampling, position semantics change
+    pre_layer = Layer(num_blocks=pre_post_blocks_num, rope=RotaryEmbedding(dim=head_dim), **layer_config)
+    down_valley = Layer(num_blocks=down_blocks_num, rope=RotaryEmbedding(dim=head_dim), **layer_config)
+    center_layer = Layer(num_blocks=centre_blocks_num, rope=RotaryEmbedding(dim=head_dim), **layer_config)
+    up_valley = Layer(num_blocks=down_blocks_num, rope=RotaryEmbedding(dim=head_dim), **layer_config)
+    post_layer = Layer(num_blocks=pre_post_blocks_num, rope=RotaryEmbedding(dim=head_dim), **layer_config)
 
     return pre_layer, down_valley, center_layer, up_valley, post_layer
+

@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 from typing import List
 import torch.nn.functional as F
-from rotary_embedding_torch import RotaryEmbedding
+
 from meshtron.encoder_conditioning import ConditioningEncoder
 from meshtron.decoder_hourglass import (
     InputEmbedding,
@@ -49,7 +49,6 @@ class Meshtron(nn.Module):
             window_size=window_size,
             ff_dropout=ff_dropout,
             attn_dropout = attn_dropout,
-            rope=RotaryEmbedding(dim=head_dim),
             condition_every_n_layers=condition_every_n_layers,
         )
 
