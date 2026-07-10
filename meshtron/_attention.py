@@ -39,10 +39,9 @@ class Attention(nn.Module):
         k = self.k_proj(k).view(b_k, l_k, h, d).transpose(1,2)
         v = self.v_proj(v).view(b_v, l_v, h, d)
 
-        #positional embedding
-        q = self.rope.rotate_queries_or_keys(q)
-
+        #positional embedding (only for self-attention; cross-attn keys are unordered latents)
         if is_self_attn:
+            q = self.rope.rotate_queries_or_keys(q)
             k = self.rope.rotate_queries_or_keys(k)
 
         q = q.transpose(1,2)

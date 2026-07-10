@@ -19,7 +19,7 @@ def pad_to_multiple(tensor, multiple, dim = -1, value = 0):
 def SwiGLU(x: torch.Tensor):
     "SwiGLU activation function"
     x1, x2 = x.chunk(2, dim=-1)
-    return F.silu(x2) * x1
+    return F.silu(x1) * x2
         
 class LinearUpSample(nn.Module):
     def __init__(self, shorten_factor: int, dim: int):
@@ -107,12 +107,14 @@ class Transformer(nn.Module):
 
         self.dropout = ff_dropout
         self.attention = Attention(dim, num_heads, head_dim, window_size, rope, attn_dropout)
+        if conditioning_flag:
+            self.cross_attention = Attention(dim, num_heads, head_dim, window_size, rope, attn_dropout)
         self.FFN = FeedForwardNetwork(dim, dim_ff, ff_dropout, SwiGLU)
 
     def forward(self,*, x: torch.Tensor, conditions: Optional[torch.Tensor], mask: Optional[torch.Tensor] = None):
         x = self.residuals[0](x, lambda x: self.attention(q=x,k=x, v=x, mask=mask))
         if self.conditioning_flag:
-            x = self.residuals[1](x, lambda x: self.attention(q=x,k= conditions, v=conditions, mask=mask))
+            x = self.residuals[1](x, lambda x: self.cross_attention(q=x,k= conditions, v=conditions, mask=mask))
             x = self.residuals[2](x, self.FFN)
         else:
             x = self.residuals[1](x, self.FFN)
